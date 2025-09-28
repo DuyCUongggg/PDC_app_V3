@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>AI Sales Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css?v=0.0.2.6" />
+    <style>
+        /* Force logo image visible and hide legacy emoji icon */
+        .logo-container .logo { display: none !important; }
+        .logo-container .logo-img { width: 28px; height: 28px; display: inline-block; object-fit: contain; margin-right: 10px; }
+        
+        /* NEW SIMPLE BUTTONS - NO HOVER ISSUES */
+        .new-quick-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .new-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        
+        .new-btn.active {
+            background: #3182ce !important;
+            border-color: #3182ce !important;
+            color: white !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 16px rgba(49, 130, 206, 0.3) !important;
+        }
+        
+        /* Dark mode */
+        .dark .new-btn {
+            background: #1a202c;
+            border-color: #4a5568;
+            color: #e2e8f0;
+        }
+        
+        .dark .new-btn.active {
+            background: #3182ce !important;
+            border-color: #3182ce !important;
+            color: white !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 16px rgba(49, 130, 206, 0.3) !important;
+        }
+    </style>
+    <!-- Favicon -->
+    <link rel="icon" href="img/paw-solid-full.svg" type="image/svg+xml" />
+    <link rel="shortcut icon" href="img/paw-solid-full.svg" type="image/svg+xml" />
+</head>
+<body>
+    <!-- App Shell -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-container">
+                    <img src="img/paw-solid-full.svg" alt="Logo" class="logo-img" width="28" height="28" />
+                    <div class="brand-info">
+                        <h1>AI Sales</h1>
+                        <span class="brand-subtitle">Assistant</span>
+                    </div>
+                </div>
+                
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3 class="nav-section-title">Quản lý</h3>
+                    <button class="nav-item active" onclick="switchTab('admin'); handleNavClick()" data-tab="admin">
+                        <span class="nav-icon">📦</span>
+                        <span class="nav-label">Sản phẩm</span>
+                        <span class="nav-badge" id="productCountBadge">0</span>
+                    </button>
+                </div>
+                
+                <div class="nav-section">
+                    <h3 class="nav-section-title">Tạo nội dung</h3>
+                    <button class="nav-item" onclick="switchTab('templates'); handleNavClick()" data-tab="templates">
+                        <span class="nav-icon">📝</span>
+                        <span class="nav-label">Templates</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('refund'); handleNavClick()" data-tab="refund">
+                        <span class="nav-icon">💰</span>
+                        <span class="nav-label">Hoàn tiền</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('upgrade'); handleNavClick()" data-tab="upgrade">
+                        <span class="nav-icon">🔄</span>
+                        <span class="nav-label">Đổi gói</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('notes'); handleNavClick()" data-tab="notes">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-label">Ghi chú</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('quote'); handleNavClick()" data-tab="quote">
+                        <span class="nav-icon">🧾</span>
+                        <span class="nav-label">Báo giá</span>
+                    </button>
+                </div>
+                
+                
+                <div class="nav-section">
+                    <h3 class="nav-section-title">Quản lý</h3>
+                    <button class="nav-item" onclick="switchTab('schedule'); handleNavClick()" data-tab="schedule">
+                        <span class="nav-icon">📅</span>
+                        <span class="nav-label">Lịch làm việc</span>
+                    </button>
+                    <button class="nav-item" onclick="switchTab('family-check'); handleNavClick()" data-tab="family-check">
+                        <span class="nav-icon">🔍</span>
+                        <span class="nav-label">Check User Family MS</span>
+                    </button>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">👤</div>
+                    <div class="user-details">
+                        <span class="user-name">Admin</span>
+                        <span class="user-role">Quản lý</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="main-header">
+                <div class="header-left">
+                    <button class="mobile-menu-toggle" id="mobileMenuBtn" title="Mở menu" aria-label="Mở menu">☰</button>
+                    <h2 class="page-title" id="pageTitle">Quản lý sản phẩm</h2>
+                    <p class="page-subtitle" id="pageSubtitle">Thêm, chỉnh sửa và quản lý các gói sản phẩm</p>
+                </div>
+                
+                <div class="header-controls">
+                    <div class="header-stats">
+                        <div class="header-stat">
+                            <span class="header-stat-value" id="productCountHeader">0</span>
+                            <span>Sản phẩm</span>
+                        </div>
+                        <div class="header-stat">
+                            <span class="header-stat-value" id="lastUpdated">--:--</span>
+                            <span>Cập nhật</span>
+                        </div>
+                    </div>
+                    
+                    <div class="header-actions">
+                        <div class="action-group">
+                            <button class="btn btn-outline" id="themeToggleBtn" title="Đổi giao diện">
+                                <span class="btn-icon">🌓</span>
+                                Theme
+                            </button>
+                            <div class="dropdown">
+                                <button class="btn btn-primary" id="fileMenuBtn">
+                                    <span class="btn-icon">📁</span>
+                                    File
+                                    <span class="dropdown-arrow">▼</span>
+                                </button>
+                                <div class="dropdown-menu" id="fileMenu">
+                                    <button class="dropdown-item" onclick="loadFromGoogleSheets()">
+                                        <span class="item-icon">📊</span>
+                                        Tải từ Google Sheets
+                                    </button>
+                                    <button class="dropdown-item" onclick="saveToGoogleSheets()">
+                                        <span class="item-icon">💾</span>
+                                        Lưu vào Google Sheets
+                                    </button>
+                                    <div class="dropdown-divider"></div>
+                                    <button class="dropdown-item" onclick="exportData()">
+                                        <span class="item-icon">📤</span>
+                                        Xuất dữ liệu
+                                    </button>
+                                    <button class="dropdown-item" onclick="importData()">
+                                        <span class="item-icon">📥</span>
+                                        Nhập dữ liệu
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- ADMIN SECTION -->
+                <section id="admin" class="tab-content active">
+                    <!-- Header -->
+                    <div class="admin-header">
+                        <h1>📦 Quản lý Sản phẩm</h1>
+                        <p>Thêm và quản lý các gói sản phẩm trong hệ thống</p>
+                    </div>
+
+                    <!-- Add Product Card -->
+                    <div class="add-product-card">
+                        <div class="card-header">
+                            <div class="icon">+</div>
+                            <h2>Thêm sản phẩm mới</h2>
+                        </div>
+                        
+                        <form id="addProductForm">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Tên sản phẩm</label>
+                                    <input type="text" class="form-input" placeholder="Nhập tên sản phẩm..." id="productName">
+                                    <div class="error-message" id="nameError"></div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">Thời hạn</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <input type="number" class="form-input" placeholder="0" id="productDuration" style="flex: 1;" min="1" step="1">
+                                        <select class="form-select" id="durationUnit" style="flex: 1;">
+                                            <option value="ngày">ngày</option>
+                                            <option value="tháng">tháng</option>
+                                            <option value="năm">năm</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">Giá</label>
+                                    <input type="number" class="form-input" placeholder="0" id="productPrice" inputmode="numeric" autocomplete="off">
+                                    <div class="error-message" id="priceError"></div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">Danh mục</label>
+                                    <select class="form-select" id="productCategory">
+                                        <option value="">Chọn danh mục</option>
+                                        <option value="AI" selected>AI</option>
+                                        <option value="Công cụ">Công cụ</option>
+                                        <option value="Combo">Combo</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Combo AI Selection -->
+                            <div id="comboAISection" style="display: none; margin-bottom: 20px;">
+                                <label class="form-label">Chọn AI cho Combo</label>
+                                <div class="ai-selection-grid" id="aiSelectionGrid">
+                                    <!-- AI products will be populated here from existing products -->
+                                </div>
+                                <div class="error-message" id="aiSelectionError"></div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: flex-end;">
+                                <button type="button" class="add-btn" onclick="addProduct()">
+                                    + Thêm sản phẩm
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Products List -->
+                    <div class="products-section">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <div class="icon" style="background: #3498db;">📋</div>
+                                <h2>Danh sách sản phẩm</h2>
+                                <span class="product-count" id="productsCount">0 sản phẩm</span>
+                            </div>
+                        </div>
+                        
+                        <div class="search-filter-bar">
+                            <input type="text" class="search-input" placeholder="Tìm kiếm sản phẩm..." id="adminSearch" oninput="filterProducts()">
+                            <select class="filter-select" id="categoryFilter" onchange="filterProducts()">
+                                <option value="">Tất cả danh mục</option>
+                                <option value="AI">AI</option>
+                                <option value="Công cụ">Công cụ</option>
+                                <option value="Combo">Combo</option>
+                            </select>
+                            <div class="bulk-actions">
+                                <button class="bulk-btn" onclick="deleteSelectedProducts()">🗑️ Xóa đã chọn</button>
+                            </div>
+                        </div>
+
+                        <div id="productsTableContainer">
+                            <table class="products-table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" class="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                        <th>Tên sản phẩm</th>
+                                        <th>Danh mục</th>
+                                        <th>Thời hạn</th>
+                                        <th>Giá</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productList">
+                                    <!-- Products will be dynamically loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="pagination" id="paginationContainer" style="display: none;">
+                            <button class="page-btn" onclick="changePage(-1)">‹</button>
+                            <button class="page-btn active" onclick="changePage(1)">1</button>
+                            <button class="page-btn" onclick="changePage(2)">2</button>
+                            <button class="page-btn" onclick="changePage(3)">3</button>
+                            <button class="page-btn" onclick="changePage(1)">›</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TEMPLATES SECTION -->
+            <section id="templates" class="tab-content">
+                    <div class="card template-card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <span class="title-icon">📝</span>
+                                Tạo Template
+                            </h3>
+                            <p class="card-subtitle">Tạo nội dung template cho khách hàng</p>
+                    </div>
+
+                        <div class="card-content">
+                            <div id="templateEmptyState" class="empty-state">
+                                <div class="empty-icon">📝</div>
+                                <h4>Chưa có sản phẩm</h4>
+                                <p>Vui lòng thêm sản phẩm trước khi tạo template</p>
+                            </div>
+
+                            <div class="template-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Chọn sản phẩm</label>
+                        <div class="search-container">
+                                            <input id="templateProductSearch" class="form-input" type="text" placeholder="Tìm kiếm sản phẩm..." />
+                            <div id="templateSearchResults" class="search-results"></div>
+                                        </div>
+                        </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Tên khách hàng (tùy chọn)</label>
+                                        <input id="customerName" class="form-input" type="text" placeholder="VD: Anh Hiếu" />
+                                    </div>
+                        </div>
+
+                                <div class="form-actions">
+                                    <button id="generateBtn" class="btn btn-primary btn-large" disabled onclick="generateTemplate()">
+                                        <span class="btn-icon">✨</span>
+                                        Tạo Template
+                                    </button>
+                        </div>
+                    </div>
+
+                            <div id="templateResult" class="template-result" style="display:none;">
+                                <div class="result-header">
+                                    <h4>Kết quả Template</h4>
+                                    <button class="btn btn-outline" onclick="copyTemplate()">
+                                        <span class="btn-icon">📋</span>
+                                        Copy
+                                    </button>
+                                </div>
+                                <div class="result-content">
+                                    <pre id="templateContent" class="template-code"></pre>
+                                </div>
+                            </div>
+                    </div>
+                </div>
+            </section>
+
+                <!-- REFUND SECTION -->
+            <section id="refund" class="tab-content">
+                    <div class="refund-container">
+                        <!-- Header -->
+                        <div class="refund-header">
+                            <h1>💰 Tính toán Hoàn tiền</h1>
+                            <button class="theme-toggle" onclick="toggleRefundTheme()">🌙</button>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div id="refundEmptyState" class="refund-empty-state">
+                            <div class="empty-icon">📦</div>
+                            <h3 class="empty-title">Chưa có sản phẩm nào</h3>
+                            <p class="empty-description">Hãy thêm sản phẩm đầu tiên của bạn</p>
+                        </div>
+
+                        <!-- Main Content -->
+                        <div class="refund-main-content">
+                            <!-- Chọn sản phẩm -->
+                            <div class="refund-card">
+                                <div class="refund-card-header">
+                                    <div class="refund-icon">📦</div>
+                                    <h2>Chọn sản phẩm</h2>
+                                </div>
+                                
+                                <div class="refund-search-box">
+                                    <input type="text" class="refund-search-input" placeholder="Tìm kiếm sản phẩm..." id="refundProductSearch" autocomplete="off" aria-autocomplete="none">
+                                    <div id="refundSearchResults" class="refund-search-results"></div>
+                                </div>
+                                
+                            </div>
+
+                            <!-- Khoảng thời gian -->
+                            <div class="refund-card">
+                                <div class="refund-card-header">
+                                    <div class="refund-icon">📅</div>
+                                    <h2>Khoảng thời gian</h2>
+                                </div>
+                                
+                                <div class="refund-date-range">
+                                    <div class="refund-date-group">
+                                        <label class="refund-date-label">Từ ngày</label>
+                                        <div class="refund-date-input-wrapper">
+                                            <input type="date" class="refund-date-input" id="startDate">
+                                            <button type="button" class="refund-today-btn-small" onclick="setToday('startDate')" title="Hôm nay">📌</button>
+                                        </div>
+                                    </div>
+                                    <div class="refund-date-group">
+                                        <label class="refund-date-label">Đến ngày</label>
+                                        <div class="refund-date-input-wrapper">
+                                            <input type="date" class="refund-date-input" id="endDate">
+                                            <button type="button" class="refund-today-btn-small" onclick="setToday('endDate')" title="Hôm nay">📌</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sản phẩm đã chọn (chỉ cho combo) -->
+                            <div class="refund-card refund-selected-products" id="refundSelectedProductsCard" style="display:none;">
+                                <div class="refund-card-header">
+                                    <div class="refund-icon">✅</div>
+                                    <h2>Sản phẩm đã chọn</h2>
+                                </div>
+
+                                <!-- Combo products selection -->
+                                <div id="comboRefundSection" class="combo-refund-section" style="display: none;">
+                                    <div id="comboProductsList" class="combo-products-list">
+                                        <!-- Combo products will be populated here -->
+                                    </div>
+                                </div>
+
+                                <div id="refundSelectedProduct" class="refund-selected-products-list" style="display:none;">
+                                    <div class="refund-selected-item">
+                                        <div class="refund-selected-item-info">
+                                            <div class="refund-selected-item-name" id="refundProductName"></div>
+                                            <div class="refund-selected-item-details">
+                                                <span id="refundProductPrice"></span>
+                                                <span id="refundProductDuration"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div id="refundEmptySelected" class="refund-empty-state">
+                                    <p>Chưa chọn sản phẩm nào</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Nút tính hoàn tiền (chỉ hiện khi có sản phẩm) -->
+                        <div class="refund-calculate-section" id="refundCalculateSection" style="display:none;">
+                            <button id="refundBtn" class="btn btn-primary btn-large" disabled onclick="calculateRefundManual()">
+                                <span class="btn-icon">💰</span>
+                                Tính hoàn tiền
+                            </button>
+                        </div>
+
+                        <!-- Kết quả -->
+                        <div class="refund-card refund-results-card" id="refundResult" style="display:none;">
+                            <div class="refund-card-header">
+                                <div class="refund-icon">📊</div>
+                                <h2>Kết quả tính toán</h2>
+                                <button class="refund-reset-btn" onclick="restartRefundForm()">🔄 Reset</button>
+                            </div>
+
+                            <div class="refund-results-grid">
+                                <!-- Chi tiết tính toán -->
+                                <div class="refund-details-section">
+                                    <h3>📋 Chi tiết tính toán</h3>
+                                    <div id="refundBreakdown" class="refund-breakdown"></div>
+                                </div>
+                                
+                                <!-- Nội dung gửi khách -->
+                                <div class="refund-details-section">
+                                    <h3>📋 Nội dung gửi khách</h3>
+                                    
+                                    <div class="refund-customer-message">
+                                        <pre id="refundCustomerContent" class="refund-customer-content"></pre>
+                                    </div>
+
+                                    <button class="refund-copy-btn" onclick="copyRefundResult()">📋 Copy nội dung gửi khách</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- UPGRADE SECTION -->
+                <section id="upgrade" class="tab-content">
+                    <div class="card upgrade-card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <span class="title-icon">🔄</span>
+                                Đổi gói sản phẩm
+                            </h3>
+                            <div class="card-actions">
+                                <button id="upgradeRefreshBtn" type="button" class="btn btn-outline btn-sm" onclick="refreshUpgradeData()">
+                                    <span class="btn-icon">🔄</span>
+                                    Làm mới
+                                </button>
+                            </div>
+                            <p class="card-subtitle">Tính toán số tiền bù khi khách hàng đổi sang gói khác</p>
+                        </div>
+                        
+                        <div class="card-content">
+                            <div id="upgradeEmptyState" class="empty-state">
+                                <div class="empty-icon">🔄</div>
+                                <h4>Chưa có sản phẩm</h4>
+                                <p>Vui lòng thêm sản phẩm trước khi tính đổi gói</p>
+                            </div>
+
+                            <div class="upgrade-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Gói hiện tại</label>
+                                        <div class="search-container">
+                                            <input id="currentProductSearch" class="form-input" type="text" placeholder="Tìm kiếm gói hiện tại..." autocomplete="off" aria-autocomplete="none" />
+                                            <div id="currentProductSearchResults" class="search-results"></div>
+                                        </div>
+                                        <label class="form-label" style="margin-top:12px;">Bắt đầu gói hiện tại</label>
+                                        <div class="date-input-group">
+                                            <input type="date" id="upgradeStartDate" class="form-input" />
+                                            <button type="button" class="btn-today" onclick="setToday('upgradeStartDate')" title="Ngày hiện tại">📅</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label class="form-label">Gói muốn đổi</label>
+                                        <div class="search-container">
+                                            <input id="newProductSearch" class="form-input" type="text" placeholder="Tìm kiếm gói mới..." autocomplete="off" aria-autocomplete="none" />
+                                            <div id="newProductSearchResults" class="search-results"></div>
+                                        </div>
+                                        <label class="form-label" style="margin-top:12px;">Ngày đổi sang gói mới</label>
+                                        <div class="date-input-group">
+                                            <input type="date" id="upgradeEndDate" class="form-input" />
+                                            <button type="button" class="btn-today" onclick="setToday('upgradeEndDate')" title="Ngày hiện tại">📅</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Removed selected products comparison per request -->
+                                <div id="upgradeSelectedProducts" class="selected-products" style="display:none;"></div>
+
+                                <button id="upgradeBtn" class="btn-calculate" disabled onclick="calculateUpgrade()">
+                                    <span class="btn-icon">🧮</span>
+                                    Tính đổi gói
+                                </button>
+                            </div>
+
+                            <div id="upgradeResult" class="upgrade-result" style="display:none;">
+                                <div class="result-header">
+                                    <h4>Kết quả đổi gói</h4>
+                                </div>
+                                
+                                <div class="result-sections">
+                                    <div class="result-section">
+                                        <h5>Chi tiết tính toán</h5>
+                                        <div id="upgradeBreakdown" class="breakdown"></div>
+                                    </div>
+                                    
+                                    <div class="result-section">
+                                        <h5>Nội dung gửi khách</h5>
+                                        <div class="result-content">
+                                            <pre id="upgradeCustomerContent" class="upgrade-code"></pre>
+                                            <div class="share-block">
+                                                <button class="btn btn-primary" onclick="copyUpgradeResult()">
+                                                    <span class="btn-icon">📋</span>
+                                                    Copy nội dung gửi khách
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                    </div>
+                </div>
+            </section>
+
+                <!-- SCHEDULE SECTION -->
+                <section id="schedule" class="tab-content">
+                    <div class="card schedule-card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <span class="title-icon">📅</span>
+                                Lịch làm việc
+                            </h3>
+                            <p class="card-subtitle">Quản lý lịch làm việc của team 4 người</p>
+                        </div>
+                        
+                        <div class="card-content">
+                            <!-- Schedule Controls -->
+                            <div class="schedule-controls">
+                                <div class="view-toggle">
+                                    <button class="btn btn-outline active" onclick="switchScheduleView('team')" id="teamViewBtn">
+                                        <span class="btn-icon">👥</span>
+                                        Lịch tổng
+                                    </button>
+                                    <button class="btn btn-outline" onclick="switchScheduleView('personal')" id="personalViewBtn">
+                                        <span class="btn-icon">👤</span>
+                                        Lịch cá nhân
+                                    </button>
+                                </div>
+                                
+                                <div class="schedule-actions">
+                                    <button class="btn btn-outline" onclick="openManagePeopleModal()">
+                                        <span class="btn-icon">👥</span>
+                                        Quản lý người
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Team Schedule View -->
+                            <div id="teamScheduleView" class="schedule-view active">
+                                <div class="schedule-header">
+                                    <h4>Lịch làm việc tổng</h4>
+                                    <div class="view-mode-toggle">
+                                        <button class="btn btn-outline active" onclick="switchTeamViewMode('week')" id="teamWeekBtn">
+                                            <span class="btn-icon">📅</span>
+                                            Tuần
+                                        </button>
+                                        <button class="btn btn-outline" onclick="switchTeamViewMode('month')" id="teamMonthBtn">
+                                            <span class="btn-icon">📆</span>
+                                            Tháng
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Team Week View -->
+                                <div id="teamWeekView" class="team-sub-view active">
+                                    <div class="week-navigation">
+                                        <button class="btn btn-outline" onclick="changeWeek(-1)">←</button>
+                                        <span id="currentWeek" class="week-display">Tuần 1-7/1/2024</span>
+                                        <button class="btn btn-outline" onclick="changeWeek(1)">→</button>
+                                    </div>
+                                    
+                                    <div class="schedule-table">
+                                        <div class="schedule-grid" id="teamScheduleGrid">
+                                            <!-- Sẽ được tạo bằng JavaScript -->
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Team Month View -->
+                                <div id="teamMonthView" class="team-sub-view">
+                                    <div class="month-navigation">
+                                        <button class="btn btn-outline" onclick="changeMonth(-1)">←</button>
+                                        <span id="currentMonth" class="month-display">Tháng 1/2024</span>
+                                        <button class="btn btn-outline" onclick="changeMonth(1)">→</button>
+                                    </div>
+                                    
+                                    <div class="monthly-calendar" id="teamMonthlyCalendar">
+                                        <!-- Sẽ được tạo bằng JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Personal Schedule View -->
+                            <div id="personalScheduleView" class="schedule-view">
+                                <div class="schedule-header">
+                                    <h4>Lịch cá nhân</h4>
+                                    <div class="personal-controls">
+                                        <div class="person-selector">
+                                            <select id="personSelect" class="form-select" onchange="loadPersonalSchedule()">
+                                                <option value="person1">Người 1</option>
+                                                <option value="person2">Người 2</option>
+                                                <option value="person3">Người 3</option>
+                                                <option value="person4">Người 4</option>
+                                            </select>
+                                        </div>
+                                        <div class="view-mode-toggle">
+                                            <button class="btn btn-outline active" onclick="switchPersonalViewMode('week')" id="personalWeekBtn">
+                                                <span class="btn-icon">📅</span>
+                                                Tuần
+                                            </button>
+                                            <button class="btn btn-outline" onclick="switchPersonalViewMode('month')" id="personalMonthBtn">
+                                                <span class="btn-icon">📆</span>
+                                                Tháng
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Personal Week View -->
+                                <div id="personalWeekView" class="personal-sub-view active">
+                                    <div class="week-navigation">
+                                        <button class="btn btn-outline" onclick="changeWeek(-1)">←</button>
+                                        <span id="personalCurrentWeek" class="week-display">Tuần 1-7/1/2024</span>
+                                        <button class="btn btn-outline" onclick="changeWeek(1)">→</button>
+                                    </div>
+                                    
+                                    <div class="schedule-table">
+                                        <div class="schedule-grid" id="personalScheduleGrid">
+                                            <!-- Sẽ được tạo bằng JavaScript -->
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Personal Month View -->
+                                <div id="personalMonthView" class="personal-sub-view">
+                                    <div class="month-navigation">
+                                        <button class="btn btn-outline" onclick="changeMonth(-1)">←</button>
+                                        <span id="personalCurrentMonth" class="month-display">Tháng 1/2024</span>
+                                        <button class="btn btn-outline" onclick="changeMonth(1)">→</button>
+                                    </div>
+                                    
+                                    <div class="monthly-calendar" id="personalMonthlyCalendar">
+                                        <!-- Sẽ được tạo bằng JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <!-- Schedule Stats -->
+                            <div class="schedule-stats">
+                                <div class="stat-card">
+                                    <div class="stat-icon">⏰</div>
+                                    <div class="stat-info">
+                                        <div class="stat-value" id="totalHours">0h</div>
+                                        <div class="stat-label">Tổng giờ làm</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">👥</div>
+                                    <div class="stat-info">
+                                        <div class="stat-value" id="activePeople">0</div>
+                                        <div class="stat-label">Người làm việc</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📊</div>
+                                    <div class="stat-info">
+                                        <div class="stat-value" id="coverageRate">0%</div>
+                                        <div class="stat-label">Tỷ lệ phủ ca</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">💰</div>
+                                    <div class="stat-info">
+                                        <div class="stat-value" id="totalSalary">0đ</div>
+                                        <div class="stat-label">Tổng lương</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🍽️</div>
+                                    <div class="stat-info">
+                                        <div class="stat-value" id="totalMealAllowance">0đ</div>
+                                        <div class="stat-label">Trợ cấp ăn</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- People Summary -->
+                            <div class="people-summary">
+                                <h4>Thống kê từng người</h4>
+                                <div class="people-grid" id="peopleGrid">
+                                    <!-- Sẽ được tạo bằng JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- NOTES SECTION -->
+                <section id="notes" class="tab-content">
+                    <div class="card notes-card">
+                        <div class="card-header">
+                            <div class="notes-toggle">
+                                <button id="notesListBtn" class="btn btn-outline active" onclick="switchNotesView('list')">Danh sách</button>
+                                <button id="notesAddBtn" class="btn btn-outline" onclick="switchNotesView('add')">Thêm ghi chú</button>
+                            </div>
+                        </div>
+                        
+                        <div class="card-content">
+                            <!-- Note Form -->
+                            <div id="notesAddView" class="note-form" style="display:none;">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label class="form-label">Link chat khách hàng</label>
+                                        <div class="link-input-group">
+                                            <input id="chatLink" class="form-input" type="url" placeholder="https://m.me/khachhang hoặc https://zalo.me/..." />
+                                            <button type="button" class="btn-copy-link" onclick="copyCurrentChatLink()" title="Copy link">
+                                                <span class="btn-icon">📋</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label class="form-label">Mã đơn hàng</label>
+                                        <input id="orderCode" class="form-input" type="text" placeholder="VD: DH001, ORDER123..." />
+                                    </div>
+                                    
+                                    <div class="form-group full-width">
+                                        <label class="form-label">Nội dung ghi chú</label>
+                                        <textarea id="noteContent" class="form-textarea" rows="4" placeholder="Nhập nội dung ghi chú cho khách hàng..."></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button class="btn btn-primary btn-large" onclick="createNote()">
+                                        <span class="btn-icon">➕</span>
+                                        Tạo ghi chú
+                                    </button>
+                                    <button class="btn btn-outline" onclick="clearNoteForm()">
+                                        <span class="btn-icon">🗑️</span>
+                                        Xóa form
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Notes List -->
+                            <div id="notesListView" class="notes-list" style="display:block;">
+                                <div class="notes-header">
+                                    <h4>Danh sách ghi chú</h4>
+                                    <div class="notes-stats">
+                                        <span id="notesCount">0 ghi chú</span>
+                                    </div>
+                                </div>
+                                
+                                <div id="notesList" class="notes-container">
+                                    <div class="empty-state">
+                                        <div class="empty-icon">📋</div>
+                                        <h4>Chưa có ghi chú</h4>
+                                        <p>Tạo ghi chú đầu tiên cho khách hàng</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- QUOTE SECTION -->
+                <section id="quote" class="tab-content">
+                    <div class="card quote-card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <span class="title-icon">💰</span>
+                                Tính báo giá
+                            </h3>
+                            <div class="card-actions">
+                                <button id="quoteRefreshBtn" type="button" class="btn btn-outline" onclick="refreshQuoteData()">
+                                    <span class="btn-icon">🔄</span>
+                                    Làm mới
+                                </button>
+                            </div>
+                            <p class="card-subtitle">Tính báo giá với phí bảo hành 10% và VAT 8%</p>
+                        </div>
+
+                        <div class="card-content">
+                            <div id="quoteEmptyState" class="empty-state">
+                                <div class="empty-icon">💰</div>
+                                <h4>Chưa có sản phẩm</h4>
+                                <p>Vui lòng thêm sản phẩm trước khi tính báo giá</p>
+                            </div>
+
+                            <div class="quote-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">Chọn sản phẩm</label>
+                                        <div class="search-container">
+                                            <input id="quoteProductSearch" class="form-input" type="text" placeholder="Tìm kiếm sản phẩm..." />
+                                            <div id="quoteSearchResults" class="search-results"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Số lượng</label>
+                                        <input id="quoteQuantity" class="form-input" type="number" placeholder="1" min="1" step="1" value="1" />
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <button id="addProductBtn" class="btn btn-outline" disabled onclick="addProductToQuote()">
+                                            <span class="btn-icon">➕</span>
+                                            Thêm sản phẩm
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Danh sách sản phẩm đã chọn -->
+                                <div id="quoteProductList" class="quote-product-list" style="display:none;">
+                                    <div class="selected-header">
+                                        <h4>Danh sách sản phẩm đã chọn</h4>
+                                        <button class="btn btn-outline btn-sm" onclick="clearQuoteProducts()">
+                                            <span class="btn-icon">🗑️</span>
+                                            Xóa tất cả
+                                        </button>
+                                    </div>
+                                    <div id="selectedProductsList" class="selected-products-list"></div>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button id="quoteBtn" class="btn btn-primary btn-large" disabled onclick="calculateQuote()">
+                                        <span class="btn-icon">🧾</span>
+                                        Tính báo giá
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="quoteResult" class="quote-result" style="display:none;">
+                                <div class="result-header">
+                                    <h4>Kết quả báo giá</h4>
+                                    <div class="result-actions">
+                                        <button class="btn btn-outline" onclick="toggleQuoteView('breakdown')">
+                                            <span class="btn-icon">📊</span>
+                                            Chi tiết
+                                        </button>
+                                        <button class="btn btn-outline" onclick="toggleQuoteView('table')">
+                                            <span class="btn-icon">📋</span>
+                                            Bảng báo giá
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="result-sections">
+                                    <!-- Chi tiết tính toán -->
+                                    <div id="quoteBreakdownView" class="result-section active">
+                                        <h5>Chi tiết tính toán</h5>
+                                        <div id="quoteBreakdown" class="breakdown"></div>
+                                    </div>
+                                    
+                                    <!-- Bảng báo giá -->
+                                    <div id="quoteTableView" class="result-section">
+                                        <h5>Bảng báo giá chính thức</h5>
+                                        <div class="invoice-table-container">
+                                            <div id="invoiceTable" class="invoice-table"></div>
+                                        </div>
+                                        <div class="share-block">
+                                            <button class="btn btn-primary" onclick="copyInvoiceTable()">
+                                                <span class="btn-icon">📋</span>
+                                                Copy bảng cho Word
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- FAMILY CHECK SECTION -->
+                <section id="family-check" class="tab-content">
+                    <div class="card family-check-card">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <span class="title-icon">🔍</span>
+                                Check User Family MS
+                            </h3>
+                            <p class="card-subtitle">So sánh danh sách email từ Microsoft Family với thông tin lưu trữ</p>
+                        </div>
+                        
+                        <div class="card-content">
+                            <!-- Input Form -->
+                            <div class="family-check-form">
+                                <!-- Number of pairs control -->
+                                <div class="pairs-control">
+                                    <div class="form-group">
+                                        <label class="form-label">Chọn số cặp list mail</label>
+                                        <div class="pairs-input-row">
+                                            <div class="custom-input-group">
+                                                <span class="input-label">Nhập số:</span>
+                                                <input id="numberOfPairs" class="form-input" type="number" min="1" max="10" value="1" onchange="updatePairTabs()" />
+                                            </div>
+                                            <div class="new-quick-buttons">
+                                                <button class="new-btn" id="btn1" onclick="testButton(1)">1 cặp</button>
+                                                <button class="new-btn" id="btn2" onclick="testButton(2)">2 cặp</button>
+                                                <button class="new-btn" id="btn3" onclick="testButton(3)">3 cặp</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Email input containers -->
+                                <div class="email-containers" id="emailContainers">
+                                    <div class="email-pair active" data-pair="1">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label">Microsoft Family</label>
+                                                <textarea class="form-textarea family-emails" rows="8" placeholder="Dán danh sách email từ Microsoft Family vào đây...&#10;&#10;Ví dụ:&#10;legal chady (you)&#10;Family organizer&#10;legalchadyhr@outlook.com&#10;&#10;Joseph Nguyen&#10;Member&#10;nghnguyen96@gmail.com"></textarea>
+                                            </div>
+                                            
+                                            <div class="form-group">
+                                                <label class="form-label">Thông tin lưu trữ</label>
+                                                <textarea class="form-textarea stored-emails" rows="8" placeholder="Dán danh sách email từ thông tin lưu trữ vào đây...&#10;&#10;Ví dụ:&#10;Bruce Do&#10;trungdn1908@gmail.com&#10;&#10;Isolated Magician&#10;kirito7129@gmail.com"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button class="btn btn-primary btn-large" onclick="checkAllFamilyEmails()">
+                                        <span class="btn-icon">🔍</span>
+                                        Bắt đầu check tất cả
+                                    </button>
+                                    <button class="btn btn-outline" onclick="clearAllFamilyForms()">
+                                        <span class="btn-icon">🗑️</span>
+                                        Xóa tất cả
+                                    </button>
+                                    <button class="btn btn-help" onclick="showGuideModal()" title="Hướng dẫn sử dụng">
+                                        <span class="btn-icon">📖</span>
+                                        HDSD
+                                    </button>
+                                </div>
+                                
+
+                            </div>
+
+                            <!-- Results -->
+                            <div id="familyCheckResult" class="family-check-result" style="display:none;">
+                                <div class="result-header">
+                                    <div class="result-header-content">
+                                        <div class="result-title">
+                                            <div>Kết quả</div>
+                                            <div>Kiểm tra</div>
+                                        </div>
+                                        
+                                        <!-- View Toggle Buttons -->
+                                        <div class="view-toggle-container" id="viewToggleContainer" style="display:none;">
+                                            <div class="view-toggle-buttons">
+                                                <button class="view-btn view-btn-detailed active" id="detailedBtn" onclick="switchToDetailedView()">
+                                                    Chi tiết
+                                                </button>
+                                                <button class="view-btn view-btn-overview" id="overviewBtn" onclick="switchToOverviewView()">
+                                                    Tổng quan
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="result-summary" id="resultSummary"></div>
+                                </div>
+                                
+                                <!-- Results for each pair -->
+                                <div id="resultsContainer" class="results-container">
+                                    <!-- Results will be generated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+
+        <div id="workflowStatus"></div>
+    </div>
+
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+
+    
+
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chỉnh sửa sản phẩm</h3>
+                <button class="modal-close" onclick="closeEditModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Tên sản phẩm</label>
+                        <input id="editProductName" class="form-input" placeholder="Nhập tên sản phẩm..." />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Thời hạn</label>
+                        <div class="input-group">
+                            <input id="editProductDuration" class="form-input" type="number" placeholder="0" />
+                            <select id="editDurationUnit" class="form-select">
+                                <option value="ngày">ngày</option>
+                                <option value="tháng">tháng</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Giá (VNĐ)</label>
+                        <input id="editProductPrice" class="form-input" placeholder="0" inputmode="numeric" autocomplete="off" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Danh mục</label>
+                        <select id="editProductCategory" class="form-select">
+                            <option value="AI">AI</option>
+                            <option value="Công cụ">Công cụ</option>
+                            <option value="Combo">Combo</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Edit Combo AI Selection -->
+                    <div id="editComboSection" class="combo-section" style="display:none;">
+                        <div class="form-group">
+                            <label class="form-label">Chọn AI cho Combo</label>
+                            <div class="ai-selection-grid" id="editAiSelectionGrid">
+                                <!-- AI products will be populated here from existing products -->
+                            </div>
+                            <div class="error-message" id="editAiSelectionError"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeEditModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="saveEditProduct()">
+                    <span class="btn-icon">💾</span>
+                    Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirmDialog" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h3 id="confirmTitle">Xác nhận</h3>
+            </div>
+            
+            <div class="modal-body">
+                <p id="confirmMessage">Bạn có chắc chắn muốn thực hiện hành động này?</p>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeConfirm()">Hủy</button>
+                <button class="btn btn-danger" onclick="confirmAction()">
+                    <span class="btn-icon">⚠️</span>
+                    Xác nhận
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage People Modal -->
+    <div id="managePeopleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Quản lý người làm việc</h3>
+                <button class="modal-close" onclick="closeManagePeopleModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="people-management">
+                    <div class="people-list" id="peopleList">
+                        <!-- Sẽ được tạo bằng JavaScript -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="deleteAllPeople()">Xóa tất cả người</button>
+                <button class="btn btn-outline" onclick="closeManagePeopleModal()">Đóng</button>
+                <button class="btn btn-primary" onclick="savePeopleChanges()">
+                    <span class="btn-icon">💾</span>
+                    Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Shift Modal -->
+    <div id="editShiftModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="editShiftTitle">Chỉnh sửa ca làm việc</h3>
+                <button class="modal-close" onclick="closeEditShiftModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Người làm việc</label>
+                        <select id="editShiftPerson" class="form-select">
+                            <option value="person1">Người 1</option>
+                            <option value="person2">Người 2</option>
+                            <option value="person3">Người 3</option>
+                            <option value="person4">Người 4</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Ngày</label>
+                        <select id="editShiftDay" class="form-select">
+                            <option value="monday">Thứ 2</option>
+                            <option value="tuesday">Thứ 3</option>
+                            <option value="wednesday">Thứ 4</option>
+                            <option value="thursday">Thứ 5</option>
+                            <option value="friday">Thứ 6</option>
+                            <option value="saturday">Thứ 7</option>
+                            <option value="sunday">Chủ nhật</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Ca làm việc</label>
+                        <select id="editShiftType" class="form-select" onchange="updateEditShiftTimes()">
+                            <option value="shift1">Ca 1 (8h-12h)</option>
+                            <option value="shift2">Ca 2 (13h-17h)</option>
+                            <option value="shift3">Ca 3 (18h-22h)</option>
+                            <option value="shift1-2">Ca 1+2 (8h-17h)</option>
+                            <option value="shift2-3">Ca 2+3 (13h-22h)</option>
+                            <option value="shift1-3">Ca 1+3 (8h-12h, 18h-22h)</option>
+                            <option value="all">Cả ngày (8h-22h)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Trợ cấp ăn cơm</label>
+                        <div class="meal-allowance-options">
+                            <label class="radio-option">
+                                <input type="radio" name="editMealAllowance" value="company" checked>
+                                <span class="radio-label">Công ty cung cấp (40k)</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="editMealAllowance" value="self">
+                                <span class="radio-label">Tự mua cơm (40k)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Ghi chú (tùy chọn)</label>
+                        <input id="editShiftNote" class="form-input" placeholder="Ghi chú đặc biệt..." />
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="deleteShift()">
+                    <span class="btn-icon">🗑️</span>
+                    Xóa ca
+                </button>
+                <button class="btn btn-outline" onclick="closeEditShiftModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="saveShift()">
+                    <span class="btn-icon">💾</span>
+                    Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Shift Modal -->
+    <div id="addShiftModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Thêm ca làm việc</h3>
+                <button class="modal-close" onclick="closeAddShiftModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Người làm việc</label>
+                        <select id="shiftPerson" class="form-select">
+                            <option value="person1">Người 1</option>
+                            <option value="person2">Người 2</option>
+                            <option value="person3">Người 3</option>
+                            <option value="person4">Người 4</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Ngày</label>
+                        <select id="shiftDay" class="form-select">
+                            <option value="monday">Thứ 2</option>
+                            <option value="tuesday">Thứ 3</option>
+                            <option value="wednesday">Thứ 4</option>
+                            <option value="thursday">Thứ 5</option>
+                            <option value="friday">Thứ 6</option>
+                            <option value="saturday">Thứ 7</option>
+                            <option value="sunday">Chủ nhật</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Ca làm việc</label>
+                        <select id="shiftType" class="form-select" onchange="updateShiftTimes()">
+                            <option value="shift1">Ca 1 (8h-12h)</option>
+                            <option value="shift2">Ca 2 (13h-17h)</option>
+                            <option value="shift3">Ca 3 (18h-22h)</option>
+                            <option value="shift1-2">Ca 1+2 (8h-17h)</option>
+                            <option value="shift2-3">Ca 2+3 (13h-22h)</option>
+                            <option value="shift1-3">Ca 1+3 (8h-12h, 18h-22h)</option>
+                            <option value="all">Cả ngày (8h-22h)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Trợ cấp ăn cơm</label>
+                        <div class="meal-allowance-options">
+                            <label class="radio-option">
+                                <input type="radio" name="mealAllowance" value="company" checked>
+                                <span class="radio-label">Công ty cung cấp (40k)</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="mealAllowance" value="self">
+                                <span class="radio-label">Tự mua cơm (40k)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Ghi chú (tùy chọn)</label>
+                        <input id="shiftNote" class="form-input" placeholder="Ghi chú đặc biệt..." />
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeAddShiftModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="addShift()">
+                    <span class="btn-icon">➕</span>
+                    Thêm ca
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/version.js"></script>
+    
+    <script src="js/app.js"></script>
+    <script src="js/modules/refund.js"></script>
+    <script src="js/modules/admin.js"></script>
+    <script src="js/modules/templates.js"></script>
+    <script src="js/modules/upgrade.js"></script>
+    <script src="js/modules/schedule.js"></script>
+    <script src="js/modules/notes.js"></script>
+    <script src="js/modules/quote.js"></script>
+    <script src="js/modules/family-check.js"></script>
+    
+    <!-- Guide Modal -->
+    <div class="modal-overlay" id="guideModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">📖 Hướng dẫn sử dụng Check User Family</h3>
+                <button class="modal-close" onclick="hideGuideModal()" title="Đóng">
+                    <span>×</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="color-guide-simple">
+                    <h3>🎨 Hướng dẫn màu sắc nhận dạng</h3>
+                    
+                    <div class="color-items">
+                        <div class="color-row perfect">
+                            <div class="color-indicator">
+                                <span class="color-dot green"></span>
+                                <span class="color-label">Xanh</span>
+                            </div>
+                            <div class="color-meaning">
+                                <span class="status-text">Email giống hệt nhau</span>
+                                <span class="action-text">→ An tâm, không cần làm gì 😌</span>
+                            </div>
+                        </div>
+                        
+                        <div class="color-row warning">
+                            <div class="color-indicator">
+                                <span class="color-dot yellow"></span>
+                                <span class="color-label">Vàng</span>
+                            </div>
+                            <div class="color-meaning">
+                                <span class="status-text">Email gần giống nhau</span>
+                                <span class="action-text">→ Cần kiểm tra kỹ phần đỏ 🧐</span>
+                            </div>
+                        </div>
+                        
+                        <div class="color-row error">
+                            <div class="color-indicator">
+                                <span class="color-dot red"></span>
+                                <span class="color-label">Đỏ</span>
+                            </div>
+                            <div class="color-meaning">
+                                <span class="status-text">Email hoàn toàn khác nhau</span>
+                                <span class="action-text">→ Bắt buộc phải sửa ngay 😱</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="quick-tip">
+                        💡 <strong>Mẹo:</strong> Chỉ cần chú ý màu 🟡 và 🔴, bỏ qua màu 🟢
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="versionBadge" class="version-badge">v0.0.2.5</div>
+    <div id="toastContainer" class="toast-container"></div>
+</body>
+</html>

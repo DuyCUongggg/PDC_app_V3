@@ -1,0 +1,52 @@
+﻿{
+  "metadata": {
+    "version": "1.0",
+    "lastUpdated": "2025-09-11T11:30:00Z",
+    "totalProducts": 4,
+    "appName": "AI Sales Assistant"
+  },
+  "categories": [
+    "AI",
+    "Công cụ",
+    "Combo"
+  ],
+  "products": [
+    {
+      "id": "chatgpt-team-001",
+      "name": "ChatGPT Team",
+      "duration": 1,
+      "durationUnit": "tháng",
+      "price": 145000,
+      "category": "AI",
+      "note": "Gói team cho ChatGPT"
+    },
+    {
+      "id": "claude-max-001", 
+      "name": "Claude Max",
+      "duration": 1,
+      "durationUnit": "tháng",
+      "price": 347500,
+      "category": "AI",
+      "note": "Gói cao cấp Claude"
+    },
+    {
+      "id": "grok-super-001",
+      "name": "Grok Super",
+      "duration": 1,
+      "durationUnit": "tháng",
+      "price": 200000,
+      "category": "AI",
+      "note": "Gói Grok cao cấp"
+    },
+    {
+      "id": "combo-vip3-001",
+      "name": "Combo VIP3",
+      "duration": 1,
+      "durationUnit": "tháng", 
+      "price": 395000,
+      "category": "Combo",
+      "note": "Combo 3 AI premium",
+      "comboProducts": ["chatgpt-team-001", "claude-max-001", "grok-super-001"]
+    }
+  ]
+}
