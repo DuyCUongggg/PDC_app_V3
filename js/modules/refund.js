@@ -2,15 +2,13 @@
 // Clean version without debug logs
 
 // Utility functions
-function formatDMY(d) {
-    return d.toLocaleDateString('vi-VN');
-}
 
 
 // Global variables
 let selectedRefundProduct = null;
 let selectedComboProductsForRefund = [];
 let selectedComboRefundProduct = null;
+let refundSearchSelectedIndex = -1;
 
 // Initialize refund module
 document.addEventListener('DOMContentLoaded', function() {
@@ -38,11 +36,12 @@ function getRefundCategoryShortLabel(category) {
 }
 
 function setupRefundEventListeners() {
-    // Product search
-    const searchInput = document.getElementById('refundProductSearch');
+    // Product search - Step 1
+    const searchInput = document.getElementById('refundProductSearchStep1');
     if (searchInput) {
         searchInput.setAttribute('autocomplete', 'off');
         searchInput.addEventListener('input', handleProductSearch);
+        searchInput.addEventListener('keydown', handleRefundSearchKeydown);
     }
     
     // Date inputs
@@ -60,9 +59,12 @@ function setupRefundEventListeners() {
 
 function handleProductSearch(e) {
     const query = e.target.value.trim();
-    const results = document.getElementById('refundSearchResults');
+    const results = document.getElementById('refundSearchResultsStep1');
     
     if (!results) return;
+    
+    // Reset selected index when searching
+    refundSearchSelectedIndex = -1;
     
     if (query.length === 0) {
         results.style.display = 'none';
@@ -80,8 +82,10 @@ function handleProductSearch(e) {
     }
     
     results.classList.add('search-results');
-    results.innerHTML = filtered.map(p => `
-        <div class="search-result-item" onclick="selectRefundProduct('${p.name}')">
+    results.innerHTML = filtered.map((p, index) => `
+        <div class="search-result-item ${index === refundSearchSelectedIndex ? 'selected' : ''}" 
+             onclick="selectRefundProduct('${p.name}')" 
+             data-index="${index}">
             <div class="result-info">
                 <div class="result-name">${p.name}</div>
                 <div class="result-details">
@@ -97,6 +101,55 @@ function handleProductSearch(e) {
     results.classList.add('show');
 }
 
+function handleRefundSearchKeydown(e) {
+    const results = document.getElementById('refundSearchResultsStep1');
+    if (!results || results.style.display === 'none') return;
+    
+    const items = results.querySelectorAll('.search-result-item');
+    if (items.length === 0) return;
+    
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            refundSearchSelectedIndex = Math.min(refundSearchSelectedIndex + 1, items.length - 1);
+            updateRefundSearchSelection();
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            refundSearchSelectedIndex = Math.max(refundSearchSelectedIndex - 1, -1);
+            updateRefundSearchSelection();
+            break;
+        case 'Enter':
+            e.preventDefault();
+            if (refundSearchSelectedIndex >= 0 && refundSearchSelectedIndex < items.length) {
+                const selectedItem = items[refundSearchSelectedIndex];
+                const productName = selectedItem.querySelector('.result-name').textContent;
+                selectRefundProduct(productName);
+            }
+            break;
+        case 'Escape':
+            e.preventDefault();
+            results.style.display = 'none';
+            refundSearchSelectedIndex = -1;
+            break;
+    }
+}
+
+function updateRefundSearchSelection() {
+    const results = document.getElementById('refundSearchResultsStep1');
+    if (!results) return;
+    
+    const items = results.querySelectorAll('.search-result-item');
+    items.forEach((item, index) => {
+        if (index === refundSearchSelectedIndex) {
+            item.classList.add('selected');
+            item.scrollIntoView({ block: 'nearest' });
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
 function selectRefundProduct(productName) {
     const products = window.products || window.appData?.products || [];
     const product = products.find(p => p.name === productName);
@@ -106,11 +159,35 @@ function selectRefundProduct(productName) {
     selectedRefundProduct = product;
     
     // Update UI
-    const searchInput = document.getElementById('refundProductSearch');
-    const results = document.getElementById('refundSearchResults');
+    const searchInput = document.getElementById('refundProductSearchStep1');
+    const results = document.getElementById('refundSearchResultsStep1');
+    const selectedProductDiv = document.getElementById('refundSelectedProductStep1');
+    const selectedProductsCard = document.getElementById('refundSelectedProductsCard');
     
     if (searchInput) searchInput.value = productName;
-    if (results) results.style.display = 'none';
+    if (results) {
+        results.style.display = 'none';
+        results.classList.remove('show');
+    }
+    
+    // Show selected product info
+    if (selectedProductDiv) {
+        selectedProductDiv.innerHTML = `
+            <div class="refund-selected-item">
+                <div class="refund-selected-item-name">${productName}</div>
+                <div class="refund-selected-item-details">${product.price}đ - ${product.planText}</div>
+            </div>
+        `;
+        selectedProductDiv.style.display = 'block';
+    }
+    
+    // Show package info card
+    if (selectedProductsCard) {
+        selectedProductsCard.style.display = 'block';
+    }
+    
+    // Reset selected index
+    refundSearchSelectedIndex = -1;
     
     // Handle combo products
     if (product.category === 'Combo' && product.comboProducts) {
@@ -182,6 +259,16 @@ function toggleComboRefundProduct(productId) {
 function updateRefundDisplay() {
     const selectedProductsCard = document.getElementById('refundSelectedProductsCard');
     if (!selectedProductsCard) return;
+    // Read extracted order info (if any)
+    let extractedOrderId = '';
+    let extractedIsoDate = '';
+    try {
+        const extractedBox = document.getElementById('refundOrderExtractResult');
+        if (extractedBox && extractedBox.dataset) {
+            extractedOrderId = extractedBox.dataset.orderId || '';
+            extractedIsoDate = extractedBox.dataset.isoDate || '';
+        }
+    } catch {}
     
     // Update card title and style based on product type
     const cardTitle = selectedProductsCard.querySelector('h2');
@@ -232,6 +319,26 @@ function updateRefundDisplay() {
             if (emptyDiv) emptyDiv.style.display = 'none';
             
             if (productNameEl) {
+                // Also show extracted order info (if any) applied in Step 1
+                let orderInfoHTML = '';
+                try {
+                    const extractedBox = document.getElementById('refundOrderExtractResult');
+                    const orderId = extractedBox && extractedBox.dataset ? extractedBox.dataset.orderId : '';
+                    const isoDate = extractedBox && extractedBox.dataset ? extractedBox.dataset.isoDate : '';
+                    const dmy = isoDate ? formatDMY(new Date(isoDate)) : '';
+                    if (orderId || dmy) {
+                        orderInfoHTML = `
+                            <div class="refund-info-line">
+                                <span class="refund-info-emoji">🧾</span>
+                                <span>Mã đơn: <strong class="refund-info-strong">${orderId || '-'}</strong></span>
+                            </div>
+                            <div class="refund-info-line">
+                                <span class="refund-info-emoji">🛒</span>
+                                <span>Ngày mua: <strong class="refund-info-strong">${dmy || '-'}</strong></span>
+                            </div>`;
+                    }
+                } catch {}
+
                 productNameEl.innerHTML = `
                     <div class="refund-info-title">${selectedRefundProduct.name}</div>
                     <div class="refund-info-lines">
@@ -243,18 +350,49 @@ function updateRefundDisplay() {
                             <span class="refund-info-emoji">⏰</span>
                             <span>Thời hạn: <strong class="refund-info-strong">${selectedRefundProduct.duration} ${selectedRefundProduct.durationUnit}</strong></span>
                         </div>
+                        ${orderInfoHTML}
                     </div>
                 `;
             }
         }
     } else {
-        selectedProductsCard.style.display = 'none';
-        
-        // Keep 2 columns when no product is selected
-        const mainContent = document.querySelector('.refund-main-content');
-        if (mainContent) {
-            mainContent.style.gridTemplateColumns = '1fr 1fr';
-            mainContent.style.gap = '30px';
+        // When no product selected, still show order info if it exists
+        const hasOrderInfo = Boolean(extractedOrderId || extractedIsoDate);
+        if (!hasOrderInfo) {
+            selectedProductsCard.style.display = 'none';
+        } else {
+            selectedProductsCard.style.display = 'block';
+            const cardTitle = selectedProductsCard.querySelector('h2');
+            const cardIcon = selectedProductsCard.querySelector('.refund-icon');
+            if (cardTitle) cardTitle.textContent = 'Thông tin đơn hàng';
+            if (cardIcon) cardIcon.textContent = '🧾';
+            selectedProductsCard.className = 'refund-card refund-package-info';
+
+            const comboSection = document.getElementById('comboRefundSection');
+            if (comboSection) comboSection.style.display = 'none';
+
+            const productDiv = document.getElementById('refundSelectedProduct');
+            const emptyDiv = document.getElementById('refundEmptySelected');
+            const productNameEl = document.getElementById('refundProductName');
+            if (productDiv) productDiv.style.display = 'block';
+            if (emptyDiv) emptyDiv.style.display = 'none';
+
+            const dmy = extractedIsoDate ? formatDMY(new Date(extractedIsoDate)) : '-';
+            if (productNameEl) {
+                productNameEl.innerHTML = `
+                    <div class="refund-info-title">Thông tin đơn hàng</div>
+                    <div class="refund-info-lines">
+                        <div class="refund-info-line">
+                            <span class="refund-info-emoji">🧾</span>
+                            <span>Mã đơn: <strong class="refund-info-strong">${extractedOrderId || '-'}</strong></span>
+                        </div>
+                        <div class="refund-info-line">
+                            <span class="refund-info-emoji">🛒</span>
+                            <span>Ngày mua: <strong class="refund-info-strong">${dmy}</strong></span>
+                        </div>
+                    </div>
+                `;
+            }
         }
     }
 }
@@ -307,8 +445,17 @@ function calculateRefund(product, startDate, endDate) {
     if (totalDays <= 0) totalDays = 1;
     if (unit === 'tháng') totalDays *= 30;
     
-    const daysUsed = Math.ceil((e - s) / (1000 * 3600 * 24));
+    const daysUsed = Math.max(0, Math.ceil((e - s) / (1000 * 3600 * 24)));
     const daysRemaining = Math.max(0, totalDays - daysUsed);
+    
+    // Validate values to prevent unusual percentages
+    if (totalDays <= 0) {
+        return { error: 'Thời hạn gói không hợp lệ!' };
+    }
+    
+    if (daysUsed < 0 || daysRemaining < 0) {
+        return { error: 'Tính toán ngày không hợp lệ!' };
+    }
     
     if (daysUsed > totalDays) {
         return { error: 'Thời gian sử dụng vượt quá thời hạn gói. Không thể hoàn.' };
@@ -336,9 +483,10 @@ function calculateRefund(product, startDate, endDate) {
     const perDay = Math.round(product.price / totalDays);
     // Compute refund proportionally and round once at the end to avoid double rounding drift
     const refund = Math.round((product.price * daysRemaining) / totalDays);
-    const refundPercentage = Math.round((daysRemaining / totalDays) * 100);
-    const usedPercentage = Math.round((daysUsed / totalDays) * 100);
+    const refundPercentage = Math.min(100, Math.max(0, Math.round((daysRemaining / totalDays) * 100)));
+    const usedPercentage = Math.min(100, Math.max(0, Math.round((daysUsed / totalDays) * 100)));
     const planText = `${product.duration} ${product.durationUnit}`;
+    
     
     return {
         product,
@@ -378,83 +526,211 @@ function displayRefundResult(result) {
     }
     
     if (customerContent) {
-        customerContent.textContent = createCustomerMessage(result);
+        const message = createCustomerMessage(result);
+        customerContent.textContent = message;
+        
+        // Also update the editable textarea
+        const messageEditor = document.getElementById('refundCustomerMessageEditor');
+        if (messageEditor) {
+            messageEditor.value = message;
+        }
     }
+    
+    // Also update the editable textarea directly
+    const messageEditor = document.getElementById('refundCustomerMessageEditor');
+    if (messageEditor) {
+        const message = createCustomerMessage(result);
+        messageEditor.value = message;
+    }
+    
+    // FORCE EQUAL COLUMNS WITH JAVASCRIPT
+    setTimeout(() => {
+        const container = document.querySelector('.refund-results-container');
+        const leftCol = document.querySelector('.refund-left-column');
+        const rightCol = document.querySelector('.refund-right-column');
+        
+        if (container && leftCol && rightCol) {
+            // Force grid layout
+            container.style.cssText = 'display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 30px !important; width: 100% !important; max-width: 100% !important;';
+            
+            // Force grid columns
+            leftCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 1 !important;';
+            rightCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 2 !important; overflow: hidden !important;';
+        }
+    }, 100);
     
     resultElement.style.display = 'block';
     resultElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function createExpiredBreakdownHTML(result) {
+    const startDate = formatDMY(new Date(document.getElementById('startDate').value));
+    const endDate = formatDMY(new Date(document.getElementById('endDate').value));
+    
     return `
-        <div class="calc-section">
-            <h6 class="calc-section-title">📊 Thông tin gói sản phẩm</h6>
-            <div class="calc-row"><span class="calc-label">💰 Tên gói:</span><span class="calc-value">${result.product.name}</span></div>
-            <div class="calc-row"><span class="calc-label">💵 Giá gói:</span><span class="calc-value">${formatPrice(result.product.price)}đ</span></div>
-            <div class="calc-row"><span class="calc-label">⏰ Thời hạn:</span><span class="calc-value">${result.totalDays} ngày (${result.planText})</span></div>
-            <div class="calc-row"><span class="calc-label">📅 Khoảng tính:</span><span class="calc-value">${formatDMY(new Date(document.getElementById('startDate').value))} → ${formatDMY(new Date(document.getElementById('endDate').value))}</span></div>
-        </div>
-        
-        <div class="calc-section">
-            <h6 class="calc-section-title">📊 Phân tích sử dụng</h6>
-            <div class="calc-row"><span class="calc-label">📈 Đơn giá/ngày:</span><span class="calc-value">${formatPrice(result.perDay)}đ/ngày</span></div>
-            <div class="calc-row"><span class="calc-label">📅 Đã sử dụng:</span><span class="calc-value text-warning">${result.daysUsed} ngày (${result.usedPercentage}%)</span></div>
-            <div class="calc-row"><span class="calc-label">⏰ Còn lại:</span><span class="calc-value text-danger">${result.daysRemaining} ngày (đã hết hạn)</span></div>
-        </div>
-        
-        <div class="calc-section">
-            <h6 class="calc-section-title">🧮 Công thức tính toán</h6>
-            <div class="calc-row"><span class="calc-label">📊 Công thức:</span><span class="calc-value text-danger">${formatPrice(result.perDay)}đ × ${result.daysRemaining} ngày = 0đ</span></div>
-            <div class="calc-row"><span class="calc-label">🎯 Chính sách:</span><span class="calc-value text-danger">Không hoàn tiền - Gói đã hết hạn</span></div>
-        </div>
-        
-        <div class="calc-section calc-total-section">
-            <h6 class="calc-section-title">💸 Kết quả hoàn tiền</h6>
-            <div class="calc-row calc-total"><span class="calc-label">🎯 SỐ TIỀN HOÀN:</span><span class="calc-value text-danger">0đ</span></div>
-            <div class="calc-row"><span class="calc-label">📊 Tỷ lệ hoàn:</span><span class="calc-value text-danger">0%</span></div>
-        </div>
+                    
+                    <div class="section-group">
+                        <div class="section-header">
+                            Thông tin gói sản phẩm
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Tên gói:</span>
+                            <span class="info-value">${result.product.name}</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Giá gói:</span>
+                            <span class="info-value">${formatPrice(result.product.price)}đ</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Thời hạn:</span>
+                            <span class="info-value">${result.totalDays} ngày (${result.planText})</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Số ngày sử dụng:</span>
+                            <span class="info-value">${result.daysUsed} ngày (${startDate} – ${endDate})</span>
+                        </div>
+                    </div>
+                    
+                    <div class="section-group">
+                        <div class="section-header">
+                            Phân tích sử dụng
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Đơn giá/ngày:</span>
+                            <span class="info-value">${formatPrice(result.perDay)}đ/ngày</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Đã sử dụng:</span>
+                            <span class="info-value negative">${result.daysUsed} ngày (${result.usedPercentage}%)</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Trạng thái:</span>
+                            <span class="info-value negative">Đã hết hạn</span>
+                        </div>
+                    </div>
+                    
+                        <div class="section-group">
+                            <div class="section-header">
+                                Công thức tính toán
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 1:</span>
+                                <span class="info-value formula">Chọn sản phẩm: ${result.product.name}</span>
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 2:</span>
+                                <span class="info-value formula">${formatPrice(result.product.price)}đ ÷ ${result.totalDays} = ${formatPrice(result.perDay)}đ/ngày</span>
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 3:</span>
+                                <span class="info-value formula">${result.totalDays} - ${result.daysUsed} = ${result.daysRemaining} ngày</span>
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 4:</span>
+                                <span class="info-value formula">${formatPrice(result.perDay)}đ × 0 = 0đ (Hết hạn)</span>
+                            </div>
+                        </div>
+                    
+                    <div class="section-group final-result warning">
+                        <div class="info-line highlight">
+                            <span class="info-label">SỐ TIỀN HOÀN:</span>
+                            <span class="info-value result-amount negative">0đ</span>
+                        </div>
+                    </div>
     `;
 }
 
 function createRefundBreakdownHTML(result) {
+    const startDate = formatDMY(new Date(document.getElementById('startDate').value));
+    const endDate = formatDMY(new Date(document.getElementById('endDate').value));
+    
     return `
-        <div class="calc-section">
-            <h6 class="calc-section-title">📊 Thông tin gói sản phẩm</h6>
-            <div class="calc-row"><span class="calc-label">💰 Tên gói:</span><span class="calc-value">${result.product.name}</span></div>
-            <div class="calc-row"><span class="calc-label">💵 Giá gói:</span><span class="calc-value">${formatPrice(result.product.price)}đ</span></div>
-            <div class="calc-row"><span class="calc-label">⏰ Thời hạn:</span><span class="calc-value">${result.totalDays} ngày (${result.planText})</span></div>
-            <div class="calc-row"><span class="calc-label">📅 Khoảng tính:</span><span class="calc-value">${formatDMY(new Date(document.getElementById('startDate').value))} → ${formatDMY(new Date(document.getElementById('endDate').value))}</span></div>
-        </div>
-        
-        <div class="calc-section">
-            <h6 class="calc-section-title">📊 Phân tích sử dụng</h6>
-            <div class="calc-row"><span class="calc-label">📈 Đơn giá/ngày:</span><span class="calc-value">${formatPrice(result.perDay)}đ/ngày</span></div>
-            <div class="calc-row"><span class="calc-label">📅 Đã sử dụng:</span><span class="calc-value text-warning">${result.daysUsed} ngày (${result.usedPercentage}%)</span></div>
-            <div class="calc-row"><span class="calc-label">✅ Còn lại:</span><span class="calc-value text-success">${result.daysRemaining} ngày (${result.refundPercentage}%)</span></div>
-        </div>
-        
-        <div class="calc-section">
-            <h6 class="calc-section-title">🧮 Công thức tính toán</h6>
-            <div class="calc-row"><span class="calc-label">📊 Công thức:</span><span class="calc-value">${formatPrice(result.perDay)}đ × ${result.daysRemaining} ngày = ${formatPrice(result.refund)}đ</span></div>
-        </div>
-        
-        <div class="calc-section calc-total-section">
-            <h6 class="calc-section-title">💸 Kết quả hoàn tiền</h6>
-            <div class="calc-row calc-total"><span class="calc-label">🎯 SỐ TIỀN HOÀN:</span><span class="calc-value text-success">${formatPrice(result.refund)}đ</span></div>
-            <div class="calc-row"><span class="calc-label">📊 Tỷ lệ hoàn:</span><span class="calc-value text-success">${result.refundPercentage}%</span></div>
-        </div>
+                    
+                    <div class="section-group">
+                        <div class="section-header">
+                            Thông tin gói sản phẩm
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Tên gói:</span>
+                            <span class="info-value">${result.product.name}</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Giá gói:</span>
+                            <span class="info-value">${formatPrice(result.product.price)}đ</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Thời hạn:</span>
+                            <span class="info-value">${result.totalDays} ngày (${result.planText})</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Số ngày sử dụng:</span>
+                            <span class="info-value">${result.daysUsed} ngày (${startDate} – ${endDate})</span>
+                        </div>
+                    </div>
+                    
+                    <div class="section-group">
+                        <div class="section-header">
+                            Phân tích sử dụng
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Đơn giá/ngày:</span>
+                            <span class="info-value">${formatPrice(result.perDay)}đ/ngày</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Đã sử dụng:</span>
+                            <span class="info-value negative">${result.daysUsed} ngày (${result.usedPercentage}%)</span>
+                        </div>
+                        <div class="info-line">
+                            <span class="info-label">Còn lại:</span>
+                            <span class="info-value positive">${result.daysRemaining} ngày</span>
+                        </div>
+                    </div>
+                    
+                        <div class="section-group">
+                            <div class="section-header">
+                                Công thức tính toán
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 1:</span>
+                                <span class="info-value formula">Chọn sản phẩm: ${result.product.name}</span>
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 2:</span>
+                                <span class="info-value formula">${formatPrice(result.product.price)}đ ÷ ${result.totalDays} = ${formatPrice(result.perDay)}đ/ngày</span>
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 3:</span>
+                                <span class="info-value formula">${result.totalDays} - ${result.daysUsed} = ${result.daysRemaining} ngày</span>
+                            </div>
+                            <div class="info-line">
+                                <span class="info-label">Bước 4:</span>
+                                <span class="info-value formula">${formatPrice(result.perDay)}đ × ${result.daysRemaining} = ${formatPrice(result.refund)}đ</span>
+                            </div>
+                        </div>
+                    
+                    <div class="section-group final-result">
+                        <div class="info-line highlight">
+                            <span class="info-label">SỐ TIỀN HOÀN:</span>
+                            <span class="info-value result-amount">${formatPrice(result.refund)}đ</span>
+                        </div>
+                    </div>
     `;
 }
 
 function createCustomerMessage(result) {
     const startDate = formatDMY(new Date(document.getElementById('startDate').value));
     const endDate = formatDMY(new Date(document.getElementById('endDate').value));
+
+    // Get saved template
+    const template = getSavedTemplate();
     
-    if (result.isExpired) {
-        return `Kính gửi Quý khách,\n\nGói ${result.product.name} đã hết hạn. Thời gian sử dụng từ ${startDate} đến ${endDate}.\nTheo chính sách hoàn tiền theo ngày còn lại, số tiền hoàn là 0đ.\n\nTrân trọng.`;
-    } else {
-        return `Kính gửi Quý khách,\n\nCentrix xin thông tin kết quả hoàn tiền cho gói ${result.product.name} ${result.product.duration} ${result.product.durationUnit} như sau:\n- Khoảng thời gian tính: ${startDate} → ${endDate}\n- Số ngày còn lại: ${result.daysRemaining} ngày\n- Số tiền hoàn dự kiến: ${formatPrice(result.refund)}đ\n\nCentrix sẽ tiến hành xử lý và chuyển hoàn trong vòng 1–2 ngày làm việc. Nếu cần hỗ trợ thêm, Quý khách vui lòng phản hồi để Centrix phục vụ tốt hơn.\nTrân trọng.`;
-    }
+    // Replace variables
+    return template
+        .replace(/\{\{productName\}\}/g, result.product.name)
+        .replace(/\{\{startDate\}\}/g, startDate)
+        .replace(/\{\{endDate\}\}/g, endDate)
+        .replace(/\{\{daysRemaining\}\}/g, result.daysRemaining)
+        .replace(/\{\{refund\}\}/g, formatPrice(result.refund) + 'đ');
 }
 
 function restartRefundForm() {
@@ -463,7 +739,7 @@ function restartRefundForm() {
     selectedComboRefundProduct = null;
     
     // Clear form
-    const searchInput = document.getElementById('refundProductSearch');
+    const searchInput = document.getElementById('refundProductSearchStep1');
     const startDate = document.getElementById('startDate');
     const endDate = document.getElementById('endDate');
     
@@ -494,15 +770,16 @@ function refreshRefundState() {
 }
 
 function copyRefundResult() {
-    const content = document.getElementById('refundCustomerContent');
-    if (!content) return;
+    const messageEditor = document.getElementById('refundCustomerMessageEditor');
+    if (!messageEditor) return;
     
-    navigator.clipboard.writeText(content.textContent).then(() => {
+    navigator.clipboard.writeText(messageEditor.value).then(() => {
         showNotification('Đã copy nội dung gửi khách!', 'success');
     }).catch(() => {
         showNotification('Không thể copy!', 'error');
     });
 }
+
 
 function toggleRefundTheme() {
     document.body.classList.toggle('dark');
@@ -517,6 +794,15 @@ function setToday(inputId) {
     if (input) {
         input.value = todayString;
         input.dispatchEvent(new Event('change'));
+    }
+}
+
+// Helper: set Step 3 start date and update state
+function setRefundStartDate(iso) {
+    const startDate = document.getElementById('startDate');
+    if (startDate) {
+        startDate.value = iso;
+        startDate.dispatchEvent(new Event('change'));
     }
 }
 
@@ -591,6 +877,7 @@ function initComboRefundSystem() {
     // This function is called from app.js
 }
 
+
 // Export functions to global scope
 window.updateRefundTab = updateRefundTab;
 window.refreshRefundData = refreshRefundData;
@@ -600,3 +887,235 @@ window.copyRefundResult = copyRefundResult;
 window.toggleRefundTheme = toggleRefundTheme;
 window.setToday = setToday;
 window.initComboRefundSystem = initComboRefundSystem;
+
+// ========== Template settings (simple) ==========
+const TEMPLATE_KEY = 'refund_template';
+
+function getDefaultTemplate() {
+    return `Kính gửi Quý khách,\n\nCentrix xin thông tin kết quả hoàn tiền cho gói {{productName}} như sau:\n- Khoảng thời gian tính: {{startDate}} → {{endDate}}\n- Số ngày còn lại: {{daysRemaining}} ngày\n- Số tiền hoàn dự kiến: {{refund}}\n\nCentrix sẽ tiến hành xử lý và chuyển hoàn trong vòng 1–2 ngày làm việc.\nTrân trọng.`;
+}
+
+function getSavedTemplate() {
+    return localStorage.getItem(TEMPLATE_KEY) || getDefaultTemplate();
+}
+
+function saveTemplate() {
+    const editor = document.getElementById('templateEditor');
+    if (editor) {
+        localStorage.setItem(TEMPLATE_KEY, editor.value);
+        alert('Đã lưu mẫu!');
+    }
+}
+
+function resetTemplate() {
+    const editor = document.getElementById('templateEditor');
+    if (editor) {
+        editor.value = getDefaultTemplate();
+        alert('Đã khôi phục mẫu mặc định!');
+    }
+}
+
+function openTemplateSettings() {
+    const modal = document.getElementById('templateModal');
+    const editor = document.getElementById('templateEditor');
+    if (modal && editor) {
+        editor.value = getSavedTemplate();
+        modal.style.display = 'flex';
+        setTimeout(() => editor.focus(), 100);
+    }
+}
+
+function closeTemplateModal() {
+    const modal = document.getElementById('templateModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Export functions
+window.openTemplateSettings = openTemplateSettings;
+window.closeTemplateModal = closeTemplateModal;
+window.saveTemplate = saveTemplate;
+window.resetTemplate = resetTemplate;
+
+// Force equal columns on page load
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        const container = document.querySelector('.refund-results-container');
+        const leftCol = document.querySelector('.refund-left-column');
+        const rightCol = document.querySelector('.refund-right-column');
+        
+        if (container && leftCol && rightCol) {
+            // Force grid layout
+            container.style.cssText = 'display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 30px !important; width: 100% !important; max-width: 100% !important;';
+            
+            // Force grid columns
+            leftCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 1 !important;';
+            rightCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 2 !important; overflow: hidden !important;';
+        }
+    }, 500);
+});
+
+// --- Minimal order extractor (order id + purchase date) ---
+function extractRefundOrderInfo() {
+    try {
+        const input = document.getElementById('refundOrderInput');
+        const resultBox = document.getElementById('refundOrderExtractResult');
+        if (!input || !resultBox) return;
+
+        const text = (input.value || '').trim();
+        if (!text) {
+            showNotification('Vui lòng dán nội dung đơn hàng!', 'error');
+            return;
+        }
+
+        // Try pattern A: [Đơn hàng #71946] (28/09/2025)
+        const a = parseRefundPatternA(text);
+        if (a) {
+            updateOrderExtractUI(a.orderId, a.purchaseDate);
+            // Auto-apply purchase date to Step 3
+            setRefundStartDate(a.purchaseDate);
+            showNotification('Đã trích xuất theo Mẫu 1 và áp dụng ngày mua', 'success');
+            // Reflect immediately in package info card
+            updateRefundDisplay();
+            return;
+        }
+
+        // Try pattern B: email, price, ORDERID RESELLER, statuses, date time
+        const b = parseRefundPatternB(text);
+        if (b) {
+            updateOrderExtractUI(b.orderId, b.purchaseDate);
+            // Auto-apply purchase date to Step 3
+            setRefundStartDate(b.purchaseDate);
+            showNotification('Đã trích xuất theo Mẫu 2 và áp dụng ngày mua', 'success');
+            // Reflect immediately in package info card
+            updateRefundDisplay();
+            return;
+        }
+
+        showNotification('Không nhận diện được mẫu dữ liệu!', 'error');
+        resultBox.style.display = 'none';
+    } catch (e) {
+        console.error('extractRefundOrderInfo error:', e);
+    }
+}
+
+function parseRefundPatternA(text) {
+    // Format: [Đơn hàng #71946] (28/09/2025)
+    const headerMatch = text.match(/\[\s*Đơn hàng\s*#(\d+)\s*\]\s*\((\d{2}\/\d{2}\/\d{4})\)/i);
+    if (!headerMatch) return null;
+    const rawId = headerMatch[1];
+    const date = headerMatch[2]; // dd/mm/yyyy
+    const orderId = rawId.startsWith('DH') ? rawId : `DH${rawId}`;
+    // Normalize to ISO yyyy-mm-dd for inputs
+    const [dd, mm, yyyy] = date.split('/');
+    const iso = `${yyyy}-${mm}-${dd}`;
+    return { orderId, purchaseDate: iso };
+}
+
+function parseRefundPatternB(text) {
+    // Expected lines include: email, price, ORDER RESELLER, PAID, SUCCESS, dd/mm/yyyy hh:mm
+    const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+    if (lines.length < 4) return null;
+
+    // Find line containing RESELLER or long order code
+    const orderLine = lines.find(l => /RESELLER/i.test(l) || /[A-Z0-9]{6,}/.test(l));
+    // Find date with dd/mm/yyyy optionally with time
+    const dateLine = lines.find(l => /(\d{2}\/\d{2}\/\d{4})/.test(l));
+    if (!orderLine || !dateLine) return null;
+
+    const orderId = orderLine.trim();
+    const dateMatch = dateLine.match(/(\d{2}\/\d{2}\/\d{4})/);
+    if (!dateMatch) return null;
+    const [dd, mm, yyyy] = dateMatch[1].split('/');
+    const iso = `${yyyy}-${mm}-${dd}`;
+    return { orderId, purchaseDate: iso };
+}
+
+function updateOrderExtractUI(orderId, isoDate) {
+    const resultBox = document.getElementById('refundOrderExtractResult');
+    const idEl = document.getElementById('extractedOrderIdMini');
+    const dateEl = document.getElementById('extractedPurchaseDateMini');
+    if (!resultBox || !idEl || !dateEl) return;
+    idEl.textContent = orderId;
+    dateEl.textContent = formatDMY(new Date(isoDate));
+    resultBox.style.display = 'block';
+    // Store on element dataset for apply step
+    resultBox.dataset.orderId = orderId;
+    resultBox.dataset.isoDate = isoDate;
+}
+
+// Removed applyExtractedOrderInfo - now auto-applied in extractRefundOrderInfo
+
+function clearRefundOrderInfo() {
+    const input = document.getElementById('refundOrderInput');
+    const resultBox = document.getElementById('refundOrderExtractResult');
+    if (input) input.value = '';
+    if (resultBox) { 
+        resultBox.style.display = 'none'; 
+        resultBox.dataset.orderId = ''; 
+        resultBox.dataset.isoDate = ''; 
+    }
+    updateRefundState();
+}
+
+// expose minimal api
+window.extractRefundOrderInfo = extractRefundOrderInfo;
+window.clearRefundOrderInfo = clearRefundOrderInfo;
+
+// Clear helpers for Step 2 and Step 3
+function clearRefundProductSelection() {
+    clearRefundProduct();
+}
+
+function clearRefundProduct() {
+    selectedRefundProduct = null;
+    const searchInput = document.getElementById('refundProductSearchStep1');
+    const results = document.getElementById('refundSearchResultsStep1');
+    const selectedProductDiv = document.getElementById('refundSelectedProductStep1');
+    const selectedProductsCard = document.getElementById('refundSelectedProductsCard');
+    
+    if (searchInput) searchInput.value = '';
+    if (results) { 
+        results.style.display = 'none'; 
+        results.innerHTML = ''; 
+        results.classList.remove('show');
+    }
+    if (selectedProductDiv) {
+        selectedProductDiv.style.display = 'none';
+        selectedProductDiv.innerHTML = '';
+    }
+    if (selectedProductsCard) selectedProductsCard.style.display = 'none';
+    
+    // Clear combo section
+    const comboSection = document.getElementById('comboRefundSection');
+    if (comboSection) comboSection.style.display = 'none';
+    
+    // Clear selected combo products
+    selectedComboProductsForRefund = [];
+    selectedComboRefundProduct = null;
+    
+    hideComboRefundSection();
+    updateRefundState();
+}
+
+function clearRefundDates() {
+    const startDate = document.getElementById('startDate');
+    const endDate = document.getElementById('endDate');
+    if (startDate) startDate.value = '';
+    if (endDate) endDate.value = '';
+    
+    // Clear any extracted dates that might have been applied
+    const resultBox = document.getElementById('refundOrderExtractResult');
+    if (resultBox && resultBox.dataset.isoDate) {
+        // Don't clear the order info, just the applied dates
+        console.log('Clearing applied dates');
+    }
+    
+    updateRefundState();
+}
+
+window.clearRefundProduct = clearRefundProduct;
+window.clearRefundProductSelection = clearRefundProductSelection;
+window.clearRefundDates = clearRefundDates;
+

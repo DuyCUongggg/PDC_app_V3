@@ -6,6 +6,8 @@ class UpgradeManager {
         this.selectedNewProduct = null;
         this.isCalculating = false;
         this.currentCustomerMessages = null;
+        this.currentSearchSelectedIndex = -1;
+        this.newSearchSelectedIndex = -1;
         this.init();
     }
 
@@ -25,6 +27,7 @@ class UpgradeManager {
             currentSearch.addEventListener('input', (e) => this.handleCurrentProductSearch(e.target.value));
             currentSearch.addEventListener('focus', () => this.highlightSearchField('current'));
             currentSearch.addEventListener('blur', () => this.unhighlightSearchField('current'));
+            currentSearch.addEventListener('keydown', (e) => this.handleSearchKeydown(e, 'current'));
         }
 
         if (newSearch) {
@@ -32,6 +35,7 @@ class UpgradeManager {
             newSearch.addEventListener('input', (e) => this.handleNewProductSearch(e.target.value));
             newSearch.addEventListener('focus', () => this.highlightSearchField('new'));
             newSearch.addEventListener('blur', () => this.unhighlightSearchField('new'));
+            newSearch.addEventListener('keydown', (e) => this.handleSearchKeydown(e, 'new'));
         }
 
         // Date inputs with validation
@@ -87,24 +91,28 @@ class UpgradeManager {
     handleCurrentProductSearch(value) {
         if (!value.trim()) {
             this.selectedCurrentProduct = null;
+            this.currentSearchSelectedIndex = -1;
             this.updateState();
             this.updateDisplay();
             this.hideSearchResults('currentProductSearchResults');
             return;
         }
 
+        this.currentSearchSelectedIndex = -1;
         this.searchProducts(value, 'currentProductSearchResults', 'current');
     }
 
     handleNewProductSearch(value) {
         if (!value.trim()) {
             this.selectedNewProduct = null;
+            this.newSearchSelectedIndex = -1;
             this.updateState();
             this.updateDisplay();
             this.hideSearchResults('newProductSearchResults');
             return;
         }
 
+        this.newSearchSelectedIndex = -1;
         this.searchProducts(value, 'newProductSearchResults', 'new');
     }
 
@@ -122,8 +130,11 @@ class UpgradeManager {
             return;
         }
 
-        const html = products.map(product => `
-            <div class="search-result-item" onclick="upgradeManager.selectProduct('${product.id}', '${type}')">
+        const selectedIndex = type === 'current' ? this.currentSearchSelectedIndex : this.newSearchSelectedIndex;
+        const html = products.map((product, index) => `
+            <div class="search-result-item ${index === selectedIndex ? 'selected' : ''}" 
+                 onclick="upgradeManager.selectProduct('${product.id}', '${type}')" 
+                 data-index="${index}">
                 <div class="result-info">
                     <div class="result-name">${product.name}</div>
                     <div class="result-details">
@@ -148,10 +159,12 @@ class UpgradeManager {
             this.selectedCurrentProduct = product;
             document.getElementById('currentProductSearch').value = product.name;
             this.hideSearchResults('currentProductSearchResults');
+            this.currentSearchSelectedIndex = -1;
         } else {
             this.selectedNewProduct = product;
             document.getElementById('newProductSearch').value = product.name;
             this.hideSearchResults('newProductSearchResults');
+            this.newSearchSelectedIndex = -1;
         }
 
         this.updateDisplay();
@@ -167,6 +180,74 @@ class UpgradeManager {
                 results.innerHTML = '';
             }, 200);
         }
+    }
+
+    handleSearchKeydown(e, type) {
+        const resultsId = type === 'current' ? 'currentProductSearchResults' : 'newProductSearchResults';
+        const results = document.getElementById(resultsId);
+        if (!results || results.style.display === 'none') return;
+        
+        const items = results.querySelectorAll('.search-result-item');
+        if (items.length === 0) return;
+        
+        const selectedIndex = type === 'current' ? this.currentSearchSelectedIndex : this.newSearchSelectedIndex;
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                if (type === 'current') {
+                    this.currentSearchSelectedIndex = Math.min(this.currentSearchSelectedIndex + 1, items.length - 1);
+                } else {
+                    this.newSearchSelectedIndex = Math.min(this.newSearchSelectedIndex + 1, items.length - 1);
+                }
+                this.updateSearchSelection(type);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                if (type === 'current') {
+                    this.currentSearchSelectedIndex = Math.max(this.currentSearchSelectedIndex - 1, -1);
+                } else {
+                    this.newSearchSelectedIndex = Math.max(this.newSearchSelectedIndex - 1, -1);
+                }
+                this.updateSearchSelection(type);
+                break;
+            case 'Enter':
+                e.preventDefault();
+                const currentSelectedIndex = type === 'current' ? this.currentSearchSelectedIndex : this.newSearchSelectedIndex;
+                if (currentSelectedIndex >= 0 && currentSelectedIndex < items.length) {
+                    const selectedItem = items[currentSelectedIndex];
+                    const productId = selectedItem.getAttribute('onclick').match(/'([^']+)'/)[1];
+                    this.selectProduct(productId, type);
+                }
+                break;
+            case 'Escape':
+                e.preventDefault();
+                this.hideSearchResults(resultsId);
+                if (type === 'current') {
+                    this.currentSearchSelectedIndex = -1;
+                } else {
+                    this.newSearchSelectedIndex = -1;
+                }
+                break;
+        }
+    }
+
+    updateSearchSelection(type) {
+        const resultsId = type === 'current' ? 'currentProductSearchResults' : 'newProductSearchResults';
+        const results = document.getElementById(resultsId);
+        if (!results) return;
+        
+        const items = results.querySelectorAll('.search-result-item');
+        const selectedIndex = type === 'current' ? this.currentSearchSelectedIndex : this.newSearchSelectedIndex;
+        
+        items.forEach((item, index) => {
+            if (index === selectedIndex) {
+                item.classList.add('selected');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('selected');
+            }
+        });
     }
 
     showSuccessFeedback(type) {

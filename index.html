@@ -135,6 +135,16 @@
                 </div>
             </div>
         </aside>
+        
+        <!-- Mini Notes Sidebar next to main sidebar (only visible on Notes tab) -->
+        <aside id="notesMiniSideDock" class="notes-mini-dock" style="display:none;">
+            <div class="mini-dock-inner">
+                <div class="mini-sidebar-header">Phân loại</div>
+                <div id="notesMiniTabs" class="notes-tabs"></div>
+            </div>
+        </aside>
+
+        
 
         <!-- Main Content -->
         <main class="main-content">
@@ -380,7 +390,7 @@
                     <div class="refund-container">
                         <!-- Header -->
                         <div class="refund-header">
-                            <h1>💰 Tính toán Hoàn tiền</h1>
+                            <div style="flex:1"></div>
                             <button class="theme-toggle" onclick="toggleRefundTheme()">🌙</button>
                         </div>
 
@@ -392,51 +402,84 @@
                         </div>
 
                         <!-- Main Content -->
-                        <div class="refund-main-content">
-                            <!-- Chọn sản phẩm -->
+                        <!-- Hàng 1: Bước 1 & 2 -->
+                        <div class="refund-row">
+                            <!-- Bước 1 · Chọn sản phẩm -->
                             <div class="refund-card">
                                 <div class="refund-card-header">
                                     <div class="refund-icon">📦</div>
-                                    <h2>Chọn sản phẩm</h2>
+                                    <h2>Bước 1 · Chọn sản phẩm</h2>
+                                </div>
+
+                                <div class="refund-search-box">
+                                    <input type="text" class="refund-search-input" placeholder="Tìm kiếm sản phẩm..." id="refundProductSearchStep1" autocomplete="off" aria-autocomplete="none">
+                                    <div id="refundSearchResultsStep1" class="refund-search-results"></div>
+                                    <div id="refundSelectedProductStep1" class="refund-selected-product" style="display:none;"></div>
+                                    <button type="button" class="btn btn-outline" onclick="clearRefundProductSelection()" style="margin-top:10px;">🗑️ Xóa lựa chọn</button>
+                                </div>
+                            </div>
+
+                            <!-- Bước 2 · Trích xuất mã đơn hàng và ngày mua -->
+                            <div class="refund-card">
+                                <div class="refund-card-header">
+                                    <div class="refund-icon">🧾</div>
+                                    <h2>Bước 2 · Trích xuất mã đơn & ngày mua</h2>
                                 </div>
                                 
                                 <div class="refund-search-box">
-                                    <input type="text" class="refund-search-input" placeholder="Tìm kiếm sản phẩm..." id="refundProductSearch" autocomplete="off" aria-autocomplete="none">
-                                    <div id="refundSearchResults" class="refund-search-results"></div>
+                                    <textarea id="refundOrderInput" class="refund-search-input" placeholder="Dán nội dung đơn hàng vào đây..." style="min-height:60px;"></textarea>
+                                    <div style="margin-top: 6px; font-size: 11px; color: #666;">
+                                        <strong>Ví dụ:</strong><br>
+                                        1. [Đơn hàng #71854] (25/09/2025)<br>
+                                        2. photoshoptutorial13@gmail.com 395,000₫ 71968 CENTRIX_ASIA PAID SUCCESS 29/09/2025 10:37
+                                    </div>
+                                    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-primary" onclick="extractRefundOrderInfo()">🔍 Trích xuất</button>
+                                        <button type="button" class="btn btn-outline" onclick="clearRefundOrderInfo()">🗑️ Xóa</button>
+                                    </div>
+                                    <div id="refundOrderExtractResult" style="margin-top:12px; display:none;">
+                                        <div><strong>Mã đơn hàng:</strong> <span id="extractedOrderIdMini">-</span></div>
+                                        <div><strong>Ngày mua:</strong> <span id="extractedPurchaseDateMini">-</span></div>
+                                    </div>
                                 </div>
-                                
                             </div>
+                        </div>
 
-                            <!-- Khoảng thời gian -->
+                        <!-- Hàng 2: Bước 3 & 4 -->
+                        <div class="refund-row">
+                            <!-- Bước 3 · Khoảng thời gian -->
                             <div class="refund-card">
                                 <div class="refund-card-header">
                                     <div class="refund-icon">📅</div>
-                                    <h2>Khoảng thời gian</h2>
+                                    <h2>Bước 3 · Khoảng thời gian</h2>
                                 </div>
                                 
                                 <div class="refund-date-range">
                                     <div class="refund-date-group">
-                                        <label class="refund-date-label">Từ ngày</label>
+                                        <label class="refund-date-label">Từ ngày mua gói</label>
                                         <div class="refund-date-input-wrapper">
                                             <input type="date" class="refund-date-input" id="startDate">
                                             <button type="button" class="refund-today-btn-small" onclick="setToday('startDate')" title="Hôm nay">📌</button>
                                         </div>
                                     </div>
                                     <div class="refund-date-group">
-                                        <label class="refund-date-label">Đến ngày</label>
+                                        <label class="refund-date-label">Đến ngày hoàn</label>
                                         <div class="refund-date-input-wrapper">
                                             <input type="date" class="refund-date-input" id="endDate">
                                             <button type="button" class="refund-today-btn-small" onclick="setToday('endDate')" title="Hôm nay">📌</button>
                                         </div>
                                     </div>
                                 </div>
+                                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-outline" onclick="clearRefundDates()">🗑️ Xóa ngày</button>
+                                </div>
                             </div>
 
-                            <!-- Sản phẩm đã chọn (chỉ cho combo) -->
+                            <!-- Bước 4 · Thông tin gói đã chọn -->
                             <div class="refund-card refund-selected-products" id="refundSelectedProductsCard" style="display:none;">
                                 <div class="refund-card-header">
                                     <div class="refund-icon">✅</div>
-                                    <h2>Sản phẩm đã chọn</h2>
+                                    <h2>Bước 4 · Thông tin gói đã chọn</h2>
                                 </div>
 
                                 <!-- Combo products selection -->
@@ -463,13 +506,17 @@
                                 </div>
                             </div>
                         </div>
+                        </div>
 
-                        <!-- Nút tính hoàn tiền (chỉ hiện khi có sản phẩm) -->
+
+                        <!-- Nút tính hoàn tiền và cài đặt mẫu -->
                         <div class="refund-calculate-section" id="refundCalculateSection" style="display:none;">
-                            <button id="refundBtn" class="btn btn-primary btn-large" disabled onclick="calculateRefundManual()">
-                                <span class="btn-icon">💰</span>
-                                Tính hoàn tiền
-                            </button>
+                            <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                                <button id="refundBtn" class="btn btn-primary btn-large" disabled onclick="calculateRefundManual()">
+                                    <span class="btn-icon">💰</span>
+                                    Tính hoàn tiền
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Kết quả -->
@@ -480,22 +527,30 @@
                                 <button class="refund-reset-btn" onclick="restartRefundForm()">🔄 Reset</button>
                             </div>
 
-                            <div class="refund-results-grid">
+                            <div class="refund-results-container">
                                 <!-- Chi tiết tính toán -->
-                                <div class="refund-details-section">
-                                    <h3>📋 Chi tiết tính toán</h3>
+                                <div class="refund-left-column">
+                                    <h3>📊 Chi tiết tính toán</h3>
                                     <div id="refundBreakdown" class="refund-breakdown"></div>
                                 </div>
                                 
                                 <!-- Nội dung gửi khách -->
-                                <div class="refund-details-section">
-                                    <h3>📋 Nội dung gửi khách</h3>
-                                    
-                                    <div class="refund-customer-message">
-                                        <pre id="refundCustomerContent" class="refund-customer-content"></pre>
+                                <div class="refund-right-column">
+                                    <div class="refund-right-header">
+                                        <h3>📋 Nội dung gửi khách</h3>
+                                        <button class="btn btn-outline btn-sm" onclick="openTemplateSettings()">
+                                            <span class="btn-icon">⚙️</span>
+                                            Cài đặt mẫu
+                                        </button>
                                     </div>
-
-                                    <button class="refund-copy-btn" onclick="copyRefundResult()">📋 Copy nội dung gửi khách</button>
+                                    
+                                    <textarea id="refundCustomerMessageEditor" class="refund-message-textarea" placeholder="Tin nhắn sẽ được tạo tự động..."></textarea>
+                                    <div class="refund-message-actions">
+                                        <button class="btn btn-primary btn-sm" onclick="copyRefundResult()">
+                                            <span class="btn-icon">📋</span>
+                                            Copy tin nhắn
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -534,7 +589,7 @@
                                             <input id="currentProductSearch" class="form-input" type="text" placeholder="Tìm kiếm gói hiện tại..." autocomplete="off" aria-autocomplete="none" />
                                             <div id="currentProductSearchResults" class="search-results"></div>
                                         </div>
-                                        <label class="form-label" style="margin-top:12px;">Bắt đầu gói hiện tại</label>
+                                        <label class="form-label" style="margin-top:12px;">Từ ngày mua gói</label>
                                         <div class="date-input-group">
                                             <input type="date" id="upgradeStartDate" class="form-input" />
                                             <button type="button" class="btn-today" onclick="setToday('upgradeStartDate')" title="Ngày hiện tại">📅</button>
@@ -547,7 +602,7 @@
                                             <input id="newProductSearch" class="form-input" type="text" placeholder="Tìm kiếm gói mới..." autocomplete="off" aria-autocomplete="none" />
                                             <div id="newProductSearchResults" class="search-results"></div>
                                         </div>
-                                        <label class="form-label" style="margin-top:12px;">Ngày đổi sang gói mới</label>
+                                        <label class="form-label" style="margin-top:12px;">Đến ngày đổi gói mới</label>
                                         <div class="date-input-group">
                                             <input type="date" id="upgradeEndDate" class="form-input" />
                                             <button type="button" class="btn-today" onclick="setToday('upgradeEndDate')" title="Ngày hiện tại">📅</button>
@@ -592,6 +647,27 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Tags Settings Modal -->
+            <div id="tagsSettingsModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Quản lý Tag</h3>
+                        <button class="modal-close" onclick="closeTagsSettings()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="display:flex; gap:8px; margin-bottom:12px;">
+                            <input id="newTagInput" class="form-input" placeholder="Nhập tag mới..." />
+                            <button class="btn btn-primary" onclick="addNewTagFromModal()">Thêm</button>
+                        </div>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">Danh sách tag đã lưu</div>
+                        <div id="tagsManageList" class="notes-category-list"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-outline" onclick="closeTagsSettings()">Đóng</button>
+                    </div>
+                </div>
+            </div>
 
                 <!-- SCHEDULE SECTION -->
                 <section id="schedule" class="tab-content">
@@ -788,6 +864,7 @@
                         </div>
                         
                         <div class="card-content">
+                                <div>
                             <!-- Note Form -->
                             <div id="notesAddView" class="note-form" style="display:none;">
                                 <div class="form-grid">
@@ -804,6 +881,18 @@
                                     <div class="form-group">
                                         <label class="form-label">Mã đơn hàng</label>
                                         <input id="orderCode" class="form-input" type="text" placeholder="VD: DH001, ORDER123..." />
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label class="form-label">Tag (phân loại)</label>
+                                        <div class="tag-select-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                            <select id="noteTagSelect" class="form-select" style="min-width:220px;">
+                                                <option value="">— Chọn tag —</option>
+                                                <option value="chua-xu-ly">Chưa xử lý</option>
+                                                <option value="note-thong-tin">Note thông tin</option>
+                                            </select>
+                                        </div>
+                                        
                                     </div>
                                     
                                     <div class="form-group full-width">
@@ -841,6 +930,8 @@
                                     </div>
                                 </div>
                             </div>
+                                </div>
+                            
                         </div>
                     </div>
                 </section>
@@ -1059,9 +1150,29 @@
         <div id="workflowStatus"></div>
     </div>
 
+
     <div class="mobile-overlay" id="mobileOverlay"></div>
 
-    
+    <!-- Modal cài đặt mẫu gửi khách -->
+    <div id="templateModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 12px; max-width: 800px; width: 90%; max-height: 90vh; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+            <div style="padding: 20px; border-bottom: 1px solid #e1e8ed; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; color: #2c3e50;">⚙️ Cài đặt mẫu gửi khách</h3>
+                <button onclick="closeTemplateModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+            </div>
+            <div style="padding: 20px;">
+                <p style="margin: 0 0 15px 0; color: #64748b; font-size: 14px;">
+                    Chỉnh sửa mẫu tin nhắn gửi khách. Biến: {{productName}}, {{startDate}}, {{endDate}}, {{daysRemaining}}, {{refund}}, {{orderId}}
+                </p>
+                <textarea id="templateEditor" style="width: 100%; min-height: 300px; padding: 12px; border: 2px solid #e1e8ed; border-radius: 6px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+            </div>
+            <div style="padding: 20px; border-top: 1px solid #e1e8ed; display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="resetTemplate()" style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer;">Khôi phục mặc định</button>
+                <button onclick="saveTemplate()" style="padding: 8px 16px; border: none; background: #3498db; color: white; border-radius: 6px; cursor: pointer;">Lưu mẫu</button>
+                <button onclick="closeTemplateModal()" style="padding: 8px 16px; border: 1px solid #ddd; background: #f8f9fa; border-radius: 6px; cursor: pointer;">Đóng</button>
+            </div>
+        </div>
+    </div>
 
 
     <!-- Edit Modal -->

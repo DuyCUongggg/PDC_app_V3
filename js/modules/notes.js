@@ -15,6 +15,12 @@ const NOTES_FETCH_MIN_INTERVAL_MS = 15000; // 15s
     loadNotesFromStorage();
     normalizeNotes();
     renderNotesList();
+    renderNotesCategories();
+    loadSavedTags();
+    loadSavedTagColors();
+    renderSavedTagsUI();
+    populateTagSelect();
+    renderMiniSidebarCategories();
     // Try to pull latest from Google Sheets (Sheet2) và tránh gọi lặp
     try { scheduleRefreshNotes(0); } catch (e) { console.warn('notes pull failed', e); }
 })();
@@ -32,9 +38,26 @@ window.switchNotesView = function(view) {
         addView.style.display = showList ? 'none' : 'block';
         listBtn.classList.toggle('active', showList);
         addBtn.classList.toggle('active', !showList);
+        // sync new inline/dock switches
+        try {
+            const miniListBtn = document.getElementById('miniNotesListBtn');
+            const miniAddBtn = document.getElementById('miniNotesAddBtn');
+            if (miniListBtn && miniAddBtn) {
+                miniListBtn.classList.toggle('active', showList);
+                miniAddBtn.classList.toggle('active', !showList);
+            }
+            const dockList = document.getElementById('dockNotesList');
+            const dockAdd = document.getElementById('dockNotesAdd');
+            if (dockList && dockAdd) {
+                dockList.classList.toggle('active', showList);
+                dockAdd.classList.toggle('active', !showList);
+            }
+        } catch {}
         if (showList) {
             renderNotesList();
         }
+        // update inline toolbar
+        try { renderInlineNotesControls(); } catch {}
     } catch {}
 }
 
@@ -48,6 +71,8 @@ function createNote() {
     const chatLink = document.getElementById('chatLink')?.value.trim();
     const orderCode = document.getElementById('orderCode')?.value.trim();
     const noteContent = document.getElementById('noteContent')?.value.trim();
+    const tagSelect = document.getElementById('noteTagSelect');
+    const selectedTag = (tagSelect?.value || '').trim();
     
     // Validation
     if (!chatLink) {
@@ -71,6 +96,16 @@ function createNote() {
         return;
     }
     
+    // Build tags string (comma-separated, lowercased, trimmed)
+    let tags = [selectedTag]
+        .filter(Boolean)
+        .join(',')
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean)
+        .join(',');
+    if (!tags) tags = '';
+
     // Create note object
     const note = {
         id: generateNoteId(),
@@ -78,7 +113,7 @@ function createNote() {
         orderCode: orderCode,
         content: noteContent,
         status: 'active',
-        tags: '',
+        tags,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
@@ -91,6 +126,7 @@ function createNote() {
     
     // Re-render list
     renderNotesList();
+    renderNotesCategories();
     
     // Save to localStorage
     saveNotesToStorage();
@@ -108,6 +144,8 @@ function clearNoteForm() {
         const element = document.getElementById(id);
         if (element) element.value = '';
     });
+    const tagSelect = document.getElementById('noteTagSelect');
+    if (tagSelect) tagSelect.value = '';
 }
 window.clearNoteForm = clearNoteForm;
 
@@ -153,6 +191,7 @@ function completeNote(noteId) {
     note.status = 'done';
     note.updatedAt = new Date().toISOString();
     renderNotesList();
+    renderNotesCategories();
     saveNotesToStorage();
     try { syncNotesToGoogleSheets(); } catch {}
     showNotification(`✅ Đã đánh dấu hoàn thành: ${note.orderCode} (đang đồng bộ)`, 'info');
@@ -165,6 +204,7 @@ async function deleteNote(noteId) {
     const deletedId = noteId;
     window.appData.notes = window.appData.notes.filter(n => n.id !== deletedId);
     renderNotesList();
+    renderNotesCategories();
     saveNotesToStorage();
     try {
         const url = (window.GAS_URL || '') + '?token=' + encodeURIComponent(window.GAS_TOKEN || '');
@@ -214,23 +254,30 @@ function formatNoteDate(dateString) {
     if (diffHours < 24) return `${diffHours} giờ trước`;
     if (diffDays < 7) return `${diffDays} ngày trước`;
     
-    return date.toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit', 
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const hour = date.getHours().toString().padStart(2, '0');
+    const minute = date.getMinutes().toString().padStart(2, '0');
+    return `${day}/${month}/${year} ${hour}:${minute}`;
 }
 
 // Render notes list
 function renderNotesList() {
     const container = document.getElementById('notesList');
     const countElement = document.getElementById('notesCount');
+    const activeCategory = window.__notesActiveCategory || 'all';
     
     if (!container) return;
     
-    const notes = window.appData.notes || [];
+    let notes = window.appData.notes || [];
+    // Filter by active category if not 'all'
+    if (activeCategory && activeCategory !== 'all') {
+        notes = notes.filter(n => {
+            const tags = String(n.tags || '').toLowerCase();
+            return tags === activeCategory;
+        });
+    }
     
     // Update count
     if (countElement) {
@@ -252,21 +299,20 @@ function renderNotesList() {
         const statusText = (note.status || 'active') === 'done' ? 'Done' : 'Active';
         const link = String(note.chatLink || '');
         const linkShort = link.length > 40 ? link.substring(0,40) + '…' : link;
+        const linkTitle = linkShort || '—';
         return `
-        <div class="note-cardv3" data-note-id="${note.id}">
+        <div class="note-cardv3" id="note-${note.id}" data-note-id="${note.id}">
             <div class="v3-head">
-                <span class="v3-code">${note.orderCode || '—'}</span>
+                <a class="v3-link" href="${link}" target="_blank" title="Mở link chat">${linkTitle}</a>
                 <span class="v3-status ${statusText === 'Done' ? 'done' : 'active'}">${statusText}</span>
             </div>
             <div class="v3-body">${String(note.content || '').replace(/\n/g,'<br>')}</div>
             <div class="v3-foot">
                 <span class="v3-time">${formatNoteDate(note.createdAt)}</span>
-                ${link ? `<a class="v3-link" href="${link}" target="_blank">${linkShort}</a>` : ''}
             </div>
             <div class="v3-actions">
                 <button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>
-                <button class="icon-btn ok" title="Done" onclick="completeNote('${note.id}')">✅</button>
-                <button class="icon-btn danger" title="Xóa" onclick="deleteNote('${note.id}')">🗑️</button>
+                <button class="icon-btn ok" title="Hoàn thành" onclick="completeNote('${note.id}')">✅</button>
             </div>
         </div>`;
     }).join('');
@@ -278,6 +324,232 @@ function renderNotesList() {
             item.classList.add('animate-loaded');
         });
     }, 100);
+}
+
+// Render categories into sidebar with counts
+function renderNotesCategories() {
+    const el = document.getElementById('notesCategoryList');
+    if (!el) return;
+    const notes = Array.isArray(window.appData.notes) ? window.appData.notes : [];
+    const base = {
+        all: notes.length,
+        'chua-xu-ly': 0,
+        'note-thong-tin': 0
+    };
+    notes.forEach(n => {
+        const tags = String(n.tags || '').toLowerCase().trim();
+        if (tags === 'chua-xu-ly') base['chua-xu-ly']++;
+        else if (tags === 'note-thong-tin') base['note-thong-tin']++;
+    });
+    const active = window.__notesActiveCategory || 'all';
+    const item = (key, label, count) => `
+        <div class="notes-category-item tag-${key} ${active===key?'active':''}" onclick="filterNotesByCategory('${key}')">
+            <span>${label}</span>
+            <span class="count">${count}</span>
+        </div>`;
+    const html = [
+        item('all','Tất cả', base.all),
+        item('chua-xu-ly','Chưa xử lý', base['chua-xu-ly']),
+        item('note-thong-tin','Note thông tin', base['note-thong-tin'])
+    ].join('');
+    el.innerHTML = html;
+    renderMiniSidebarCategories();
+}
+window.renderNotesCategories = renderNotesCategories;
+
+// Category filter handler
+window.filterNotesByCategory = function(category) {
+    window.__notesActiveCategory = category || 'all';
+    renderNotesCategories();
+    renderNotesList();
+    // Ensure mini tabs reflect active state instantly
+    try { updateMiniTabsActive(); } catch {}
+}
+
+// Render into mini sidebar
+function renderMiniSidebarCategories() {
+    renderFixedNoteTabs();
+    renderMiniNotesActions();
+    ensureNotesModeSwitch();
+    try {
+        const app = document.querySelector('.app-container');
+        if (app) app.classList.add('with-notes-dock');
+    } catch {}
+}
+window.renderMiniSidebarCategories = renderMiniSidebarCategories;
+
+function renderFixedNoteTabs() {
+    const container = document.getElementById('notesMiniTabs');
+    if (!container) return;
+    const notes = getFilteredNotes();
+    const listItems = notes.map(n => {
+        const text = String(n.content || '').split('\n')[0].slice(0, 34);
+        const badge = (n.status||'active') === 'done' ? '✅' : '🕘';
+        return `<button class="mini-note-item" onclick="focusNote('${n.id}')">${badge} ${text || 'Ghi chú'}</button>`;
+    }).join('');
+    container.innerHTML = `
+        <div class="mini-notes-list">${listItems || '<div class=\"mini-empty\">Chưa có ghi chú</div>'}</div>
+    `;
+}
+
+// Render compact actions (Danh sách / Thêm) into mini dock
+function renderMiniNotesActions() {
+    // legacy no-op
+}
+
+// Integrated mode switch inside mini dock (replaces floating toggle)
+function ensureNotesModeSwitch() {
+    try {
+        const dock = document.getElementById('notesMiniSideDock');
+        if (!dock) return;
+        let holder = document.getElementById('notesModeSwitch');
+        if (!holder) {
+            holder = document.createElement('div');
+            holder.id = 'notesModeSwitch';
+            holder.className = 'notes-mode-switch';
+            const inner = dock.querySelector('.mini-dock-inner');
+            if (inner) inner.insertBefore(holder, inner.firstChild);
+        }
+        const listView = document.getElementById('notesListView');
+        const isList = !!(listView && listView.style.display !== 'none');
+        holder.innerHTML = `
+            <button id="dockNotesList" class="seg ${isList?'active':''}" onclick="switchNotesView('list')">Danh sách</button>
+            <button id="dockNotesAdd" class="seg ${!isList?'active':''}" onclick="switchNotesView('add')">Thêm note</button>
+        `;
+    } catch {}
+}
+
+// New inline controls rendering inside the Notes card header area
+function renderInlineNotesControls() {
+    try {
+        const container = document.getElementById('notes');
+        if (!container) return;
+        let toolbar = document.getElementById('notesInlineToolbar');
+        if (!toolbar) {
+            toolbar = document.createElement('div');
+            toolbar.id = 'notesInlineToolbar';
+            toolbar.className = 'notes-inline-toolbar';
+            // Insert at top of notes card content
+            const card = container.querySelector('.card .card-content');
+            const first = card ? card.firstElementChild : null;
+            if (card) card.insertBefore(toolbar, first);
+        }
+        const isList = (document.getElementById('notesListView')?.style.display || 'block') !== 'none';
+        const active = window.__notesActiveCategory || 'all';
+        toolbar.innerHTML = `
+            <div class="inline-left">
+                <div class="seg-group">
+                    <button class="seg ${isList?'active':''}" onclick="switchNotesView('list')">Danh sách</button>
+                    <button class="seg ${!isList?'active':''}" onclick="switchNotesView('add')">Thêm note</button>
+                </div>
+            </div>
+            <div class="inline-right ${isList?'':'hidden'}">
+                <div class="chips">
+                    <button class="chip ${active==='all'?'active':''}" onclick="filterNotesByCategory('all')">Tất cả</button>
+                    <button class="chip ${active==='note-thong-tin'?'active':''}" onclick="filterNotesByCategory('note-thong-tin')">Note thông tin</button>
+                    <button class="chip ${active==='chua-xu-ly'?'active':''}" onclick="filterNotesByCategory('chua-xu-ly')">Chưa xử lý</button>
+                </div>
+            </div>
+        `;
+    } catch {}
+}
+
+// Update active class on mini tabs without re-rendering DOM
+function updateMiniTabsActive() {
+    // Re-render mini notes list whenever category changes
+    renderFixedNoteTabs();
+}
+
+function getFilteredNotes() {
+    const activeCategory = window.__notesActiveCategory || 'all';
+    let notes = window.appData?.notes || [];
+    if (activeCategory && activeCategory !== 'all') {
+        notes = notes.filter(n => String(n.tags||'').toLowerCase() === activeCategory);
+    }
+    return notes;
+}
+
+window.focusNote = function(noteId) {
+    try {
+        const el = document.getElementById(`note-${noteId}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch {}
+}
+
+// Settings modal handlers
+window.openTagsSettings = function() {
+    try {
+        const m = document.getElementById('tagsSettingsModal');
+        if (!m) return; m.classList.add('show');
+        renderTagsManageList();
+    } catch {}
+}
+window.closeTagsSettings = function() {
+    const m = document.getElementById('tagsSettingsModal');
+    if (m) m.classList.remove('show');
+}
+function renderTagsManageList() {
+    const el = document.getElementById('tagsManageList');
+    if (!el) return;
+    const tags = window.__savedTags || [];
+    el.innerHTML = tags.map(t => {
+        const hex = (window.__savedTagColors||{})[t] || '#3182ce';
+        return `
+        <div class="notes-category-item" style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <input type="color" value="${hex}" onchange="updateSavedTagColor('${t}', this.value)" title="Màu của tag" style="width:28px; height:28px; border:none; background:transparent; padding:0;" />
+                <span>${t}</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+                <button class="btn btn-outline btn-sm" onclick="renameSavedTagPrompt('${t}')">Sửa</button>
+                <button class="btn btn-danger btn-sm" onclick="removeSavedTag('${t}'); renderTagsManageList();">Xóa</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+window.addNewTagFromModal = function() {
+    const input = document.getElementById('newTagInput');
+    if (!input) return;
+    const val = (input.value || '').trim().toLowerCase();
+    if (!val) return;
+    window.__savedTags = Array.from(new Set([...(window.__savedTags||[]), val]));
+    saveSavedTags(); populateTagSelect(); renderSavedTagsUI(); renderNotesCategories(); renderTagsManageList();
+    input.value = '';
+}
+window.renameSavedTagPrompt = function(oldTag) {
+    const nv = prompt('Đổi tên tag', oldTag);
+    if (!nv) return;
+    const newTag = nv.trim().toLowerCase();
+    if (!newTag) return;
+    window.__savedTags = (window.__savedTags||[]).map(t => t === oldTag ? newTag : t);
+    if (window.__savedTagColors && window.__savedTagColors[oldTag]) {
+        window.__savedTagColors[newTag] = window.__savedTagColors[oldTag];
+        delete window.__savedTagColors[oldTag];
+        saveSavedTagColors();
+    }
+    saveSavedTags(); populateTagSelect(); renderSavedTagsUI(); renderNotesCategories(); renderTagsManageList();
+}
+
+window.updateSavedTagColor = function(tag, hex) {
+    try {
+        if (!window.__savedTagColors) window.__savedTagColors = {};
+        window.__savedTagColors[tag] = hex;
+        saveSavedTagColors();
+        renderNotesCategories();
+        renderMiniSidebarCategories();
+    } catch {}
+}
+
+function hexToRgba(hex, alpha) {
+    try {
+        const h = hex.replace('#','');
+        const expanded = h.length===3 ? h.split('').map(c=>c+c).join('') : h;
+        const bigint = parseInt(expanded, 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    } catch { return 'rgba(49,130,206,0.12)'; }
 }
 
 // Save notes to localStorage
@@ -317,6 +589,7 @@ function loadNotesFromStorage() {
 // Update notes tab (called from main app)
 function updateNotesTab() {
     renderNotesList();
+    renderNotesCategories();
     // Pull latest when user switches to Notes tab
     try { refreshNotesFromSheets(); } catch {}
 }
@@ -434,3 +707,71 @@ window.clearNotesCache = function() { try { localStorage.removeItem('pdc_app_dat
 function scheduleRefreshNotes(delayMs) {
     setTimeout(() => { refreshNotesFromSheets(true); }, Math.max(0, delayMs || 0));
 }
+
+// ===== Lightweight local tag management (no DB) =====
+const SAVED_TAGS_KEY = 'pdc_saved_tags_v1';
+const SAVED_TAG_COLORS_KEY = 'pdc_saved_tag_colors_v1';
+function loadSavedTags() {
+    try {
+        const raw = localStorage.getItem(SAVED_TAGS_KEY);
+        const arr = raw ? JSON.parse(raw) : ['khachhang','noibo','gap','khac'];
+        window.__savedTags = Array.isArray(arr) ? arr.filter(Boolean) : [];
+    } catch { window.__savedTags = ['khachhang','noibo','gap','khac']; }
+}
+function loadSavedTagColors() {
+    try {
+        const raw = localStorage.getItem(SAVED_TAG_COLORS_KEY);
+        const obj = raw ? JSON.parse(raw) : { khachhang:'#0b74c4', noibo:'#3b5bdb', gap:'#d9480f', khac:'#495057', all:'#3182ce' };
+        window.__savedTagColors = obj || {};
+    } catch { window.__savedTagColors = { khachhang:'#0b74c4', noibo:'#3b5bdb', gap:'#d9480f', khac:'#495057', all:'#3182ce' }; }
+}
+function saveSavedTagColors() {
+    try { localStorage.setItem(SAVED_TAG_COLORS_KEY, JSON.stringify(window.__savedTagColors || {})); } catch {}
+}
+function saveSavedTags() {
+    try { localStorage.setItem(SAVED_TAGS_KEY, JSON.stringify(window.__savedTags || [])); } catch {}
+}
+function renderSavedTagsUI() {
+    const wrap = document.getElementById('savedTagsChips');
+    if (!wrap) return;
+    const tags = (window.__savedTags || []).slice(0, 50);
+    wrap.innerHTML = tags.map(t => `<span class="chip" style="padding:4px 8px; border:1px solid var(--border-primary); border-radius:999px; cursor:pointer;">${t} <button type="button" style="margin-left:6px; border:none; background:transparent; cursor:pointer;" onclick="removeSavedTag('${t}')">×</button></span>`).join('');
+}
+function populateTagSelect() {
+    const updateOne = (sel) => {
+        if (!sel) return;
+        const hasEmpty = sel.querySelector('option[value=""]');
+        sel.innerHTML = '';
+        if (hasEmpty) sel.appendChild(hasEmpty);
+        const fixedTags = ['chua-xu-ly', 'note-thong-tin'];
+        fixedTags.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = (t === 'chua-xu-ly') ? 'Chưa xử lý' : 'Note thông tin';
+            sel.appendChild(opt);
+        });
+    };
+    updateOne(document.getElementById('noteTagSelect'));
+    updateOne(document.getElementById('modalTagSelect'));
+}
+window.addTagToSavedList = function() {
+    try {
+        const sel = document.getElementById('noteTagSelect');
+        const custom = document.getElementById('noteTagsCustom');
+        const fromSel = (sel?.value || '').trim().toLowerCase();
+        const fromCustom = (custom?.value || '').trim().toLowerCase();
+        const parts = [fromSel, fromCustom].filter(Boolean).join(',').split(',').map(s=>s.trim()).filter(Boolean);
+        if (parts.length === 0) { showNotification('Nhập hoặc chọn tag để lưu', 'error'); return; }
+        window.__savedTags = Array.from(new Set([...(window.__savedTags||[]), ...parts]));
+        saveSavedTags(); populateTagSelect(); renderSavedTagsUI();
+        showNotification('Đã lưu tag vào máy bạn', 'success');
+    } catch {}
+}
+window.removeSavedTag = function(tag) {
+    try {
+        window.__savedTags = (window.__savedTags || []).filter(t => t !== tag);
+        saveSavedTags(); populateTagSelect(); renderSavedTagsUI(); renderTagsManageList();
+    } catch {}
+}
+
+// removed bulk add from modal (simplified UI)

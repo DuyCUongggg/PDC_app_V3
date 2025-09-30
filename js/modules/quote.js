@@ -87,7 +87,7 @@ function searchQuoteProducts() {
     }
     
     if (typeof searchProductsByName === 'function') {
-        searchProductsByName(query, 'quoteSearchResults', 'selectQuoteProduct');
+        searchProductsByName(query, 'quoteSearchResults', 'selectQuoteProduct', 'quote');
     }
 }
 
@@ -119,6 +119,14 @@ function selectQuoteProduct(productId) {
         searchResults.classList.remove('show');
         searchResults.innerHTML = '';
         searchResults.style.display = 'none';
+    }
+    
+    // Reset global search state
+    if (typeof globalSearchSelectedIndex !== 'undefined') {
+        globalSearchSelectedIndex = -1;
+    }
+    if (typeof currentSearchContext !== 'undefined') {
+        currentSearchContext = null;
     }
     
     // Enable add product button
@@ -329,6 +337,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (quoteSearch) {
         quoteSearch.addEventListener('input', searchQuoteProducts);
         quoteSearch.addEventListener('focus', searchQuoteProducts);
+        quoteSearch.addEventListener('keydown', function(e) {
+            if (typeof handleGlobalSearchKeydown === 'function') {
+                handleGlobalSearchKeydown(e);
+            }
+        });
     }
     
     // Quantity input - removed since we're not using updateQuoteQuantityDisplay anymore

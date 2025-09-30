@@ -19,6 +19,8 @@
     // Global variables
     let selectedComboProducts = [];
     let selectedComboRefundProduct = null; // Single combo product for refund
+    let globalSearchSelectedIndex = -1;
+    let currentSearchContext = null; // 'quote', 'admin', etc.
 
     // ===== DROPDOWN MENU HANDLING =====
     function initDropdowns() {
@@ -70,10 +72,17 @@
         const num = cleaned ? Number(cleaned) : 0;
         return Number.isFinite(num) && num >= 0 ? num : 0;
     }
+    function formatDMY(d) {
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+    }
     
     // Export utilities to global scope
     window.formatPrice = formatPrice;
     window.parsePrice = parsePrice;
+    window.formatDMY = formatDMY;
     
     function bindPriceInput(el) { 
         if (!el) return; 
@@ -219,6 +228,23 @@
         document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
         document.querySelector(`[data-tab="${id}"]`)?.classList.add('active');
         
+        // removed secondary sidebar toggle
+        // Toggle notes mini dock next to main sidebar
+        try {
+            const dock = document.getElementById('notesMiniSideDock');
+            const app = document.querySelector('.app-container');
+            if (dock && app) {
+                const show = id === 'notes';
+                dock.style.display = show ? 'block' : 'none';
+                app.classList.toggle('with-notes-dock', show);
+                if (show && window.renderMiniSidebarCategories) {
+                    const src = document.getElementById('notesCategoryList');
+                    const dst = document.getElementById('notesMiniCategoryListDock');
+                    if (src && dst) dst.innerHTML = src.innerHTML;
+                }
+            }
+        } catch {}
+
         // Update page title and subtitle
         const titles = {
             'admin': { title: 'Quản lý sản phẩm', subtitle: 'Thêm, chỉnh sửa và quản lý các gói sản phẩm' },
@@ -948,7 +974,7 @@
     window.searchProducts = searchProducts;
 
     // Strict name-only search (used by refund)
-    function searchProductsByName(q, boxId, handler) {
+    function searchProductsByName(q, boxId, handler, context = null) {
         const box = document.getElementById(boxId); 
         if (!box) return;
         const qN = normalizeText((q || '').trim());
@@ -956,8 +982,15 @@
             box.classList.remove('show');
             box.innerHTML = '';
             box.style.display = 'none';
+            globalSearchSelectedIndex = -1;
+            currentSearchContext = null;
             return; 
         }
+        
+        // Set search context
+        currentSearchContext = context;
+        globalSearchSelectedIndex = -1;
+        
         const hits = (appData.products || []).filter(p => {
             const nameN = normalizeText(p.name);
             // Match from word boundary or anywhere, but NAME only
@@ -966,8 +999,10 @@
         box.classList.add('search-results');
         box.innerHTML = hits.length ? 
             (`<div class="search-hint">Nhấn vào gói để chọn</div>` +
-            hits.map(p => `
-                <div class="search-result-item" onclick="${handler}('${p.id}')">
+            hits.map((p, index) => `
+                <div class="search-result-item ${index === globalSearchSelectedIndex ? 'selected' : ''}" 
+                     onclick="${handler}('${p.id}')" 
+                     data-index="${index}">
                     <div class="result-info">
                         <div class="result-name">${p.name}</div>
                         <div class="result-details">
@@ -982,6 +1017,87 @@
         box.style.display = 'block';
     }
     window.searchProductsByName = searchProductsByName;
+
+    // Global keyboard navigation for search
+    function handleGlobalSearchKeydown(e) {
+        // Only handle if we have an active search context
+        if (!currentSearchContext) return;
+        
+        const searchInput = e.target;
+        const resultsId = getResultsIdFromContext(currentSearchContext);
+        const results = document.getElementById(resultsId);
+        
+        if (!results || results.style.display === 'none') return;
+        
+        const items = results.querySelectorAll('.search-result-item');
+        if (items.length === 0) return;
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                globalSearchSelectedIndex = Math.min(globalSearchSelectedIndex + 1, items.length - 1);
+                updateGlobalSearchSelection(resultsId);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                globalSearchSelectedIndex = Math.max(globalSearchSelectedIndex - 1, -1);
+                updateGlobalSearchSelection(resultsId);
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (globalSearchSelectedIndex >= 0 && globalSearchSelectedIndex < items.length) {
+                    const selectedItem = items[globalSearchSelectedIndex];
+                    const productId = selectedItem.getAttribute('onclick').match(/'([^']+)'/)[1];
+                    handleGlobalSearchSelection(productId, currentSearchContext);
+                }
+                break;
+            case 'Escape':
+                e.preventDefault();
+                if (results) {
+                    results.style.display = 'none';
+                    results.classList.remove('show');
+                }
+                globalSearchSelectedIndex = -1;
+                currentSearchContext = null;
+                break;
+        }
+    }
+
+    function getResultsIdFromContext(context) {
+        switch (context) {
+            case 'quote': return 'quoteSearchResults';
+            case 'admin': return 'adminSearchResults';
+            default: return null;
+        }
+    }
+
+    function updateGlobalSearchSelection(resultsId) {
+        const results = document.getElementById(resultsId);
+        if (!results) return;
+        
+        const items = results.querySelectorAll('.search-result-item');
+        items.forEach((item, index) => {
+            if (index === globalSearchSelectedIndex) {
+                item.classList.add('selected');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
+
+    function handleGlobalSearchSelection(productId, context) {
+        switch (context) {
+            case 'quote':
+                if (typeof selectQuoteProduct === 'function') {
+                    selectQuoteProduct(productId);
+                }
+                break;
+            case 'admin':
+                // Handle admin selection if needed
+                break;
+        }
+    }
 
     // boot
     document.addEventListener('DOMContentLoaded', () => {
@@ -1515,6 +1631,9 @@
         initComboSection();
         initComboRefund();
         initRefundForm();
+        if (typeof initRefundTemplateUI === 'function') {
+            try { initRefundTemplateUI(); } catch {}
+        }
     });
     
     // Initialize refund form with default values
