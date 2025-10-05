@@ -60,46 +60,86 @@ function setupRefundEventListeners() {
 function handleProductSearch(e) {
     const query = e.target.value.trim();
     const results = document.getElementById('refundSearchResultsStep1');
-    
+
     if (!results) return;
-    
-    // Reset selected index when searching
+
+    // Reset selected index khi tìm kiếm
     refundSearchSelectedIndex = -1;
-    
+
     if (query.length === 0) {
         results.style.display = 'none';
+        results.innerHTML = '';
+        results.classList.remove('show');
         return;
     }
-    
+
     const products = window.products || window.appData?.products || [];
-    const filtered = products.filter(p => 
-        p.name.toLowerCase().includes(query.toLowerCase())
+    const filtered = products.filter(p =>
+        (p.name || '').toLowerCase().includes(query.toLowerCase())
     );
-    
+
     if (filtered.length === 0) {
         results.style.display = 'none';
+        results.innerHTML = '';
+        results.classList.remove('show');
         return;
     }
-    
+
+    // Clear danh sách cũ
+    results.innerHTML = '';
     results.classList.add('search-results');
-    results.innerHTML = filtered.map((p, index) => `
-        <div class="search-result-item ${index === refundSearchSelectedIndex ? 'selected' : ''}" 
-             onclick="selectRefundProduct('${p.name}')" 
-             data-index="${index}">
-            <div class="result-info">
-                <div class="result-name">${p.name}</div>
-                <div class="result-details">
-                    <span class="result-price">${formatPrice(p.price)}đ</span>
-                    <span class="result-duration">${p.duration} ${p.durationUnit}</span>
-                    <span class="result-category">${getRefundCategoryShortLabel(p.category)}</span>
-                </div>
-            </div>
-        </div>
-    `).join('');
-    
+
+    // Render từng item bằng DOM API (không dùng innerHTML, không onclick inline)
+    filtered.forEach((p, index) => {
+        const item = document.createElement('div');
+        item.className = 'search-result-item';
+        if (index === refundSearchSelectedIndex) item.classList.add('selected');
+        item.dataset.id = p.id;
+        item.dataset.index = index;
+
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'result-info';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'result-name';
+        nameDiv.textContent = p.name;
+
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'result-details';
+
+        const priceSpan = document.createElement('span');
+        priceSpan.className = 'result-price';
+        priceSpan.textContent = formatPrice(p.price) + 'đ';
+
+        const durationSpan = document.createElement('span');
+        durationSpan.className = 'result-duration';
+        durationSpan.textContent = p.duration + ' ' + p.durationUnit;
+
+        const categorySpan = document.createElement('span');
+        categorySpan.className = 'result-category';
+        categorySpan.textContent = getRefundCategoryShortLabel(p.category);
+
+        detailsDiv.appendChild(priceSpan);
+        detailsDiv.appendChild(durationSpan);
+        detailsDiv.appendChild(categorySpan);
+
+        infoDiv.appendChild(nameDiv);
+        infoDiv.appendChild(detailsDiv);
+        item.appendChild(infoDiv);
+
+        // Gắn sự kiện click ngay khi tạo
+        item.addEventListener('click', () => {
+            selectRefundProduct(p.id);
+        });
+
+        results.appendChild(item);
+    });
+
     results.style.display = 'block';
     results.classList.add('show');
 }
+
+
 
 function handleRefundSearchKeydown(e) {
     const results = document.getElementById('refundSearchResultsStep1');
@@ -123,8 +163,10 @@ function handleRefundSearchKeydown(e) {
             e.preventDefault();
             if (refundSearchSelectedIndex >= 0 && refundSearchSelectedIndex < items.length) {
                 const selectedItem = items[refundSearchSelectedIndex];
-                const productName = selectedItem.querySelector('.result-name').textContent;
-                selectRefundProduct(productName);
+                const productId = selectedItem.dataset.id;  // <-- lấy id từ data-id
+                if (productId) {
+                    selectRefundProduct(productId);        // <-- gọi theo id (đã chốt)
+                }
             }
             break;
         case 'Escape':
@@ -134,25 +176,35 @@ function handleRefundSearchKeydown(e) {
             break;
     }
 }
-
+function isElementInViewport(el, container) {
+    const elRect = el.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    return (
+        elRect.top >= containerRect.top &&
+        elRect.bottom <= containerRect.bottom
+    );
+}
 function updateRefundSearchSelection() {
     const results = document.getElementById('refundSearchResultsStep1');
     if (!results) return;
-    
+
     const items = results.querySelectorAll('.search-result-item');
     items.forEach((item, index) => {
         if (index === refundSearchSelectedIndex) {
             item.classList.add('selected');
-            item.scrollIntoView({ block: 'nearest' });
+            // Chỉ scroll khi item chưa nằm trọn trong khung
+            if (!isElementInViewport(item, results)) {
+                item.scrollIntoView({ block: 'nearest' });
+            }
         } else {
             item.classList.remove('selected');
         }
     });
 }
 
-function selectRefundProduct(productName) {
+function selectRefundProduct(productId) {
     const products = window.products || window.appData?.products || [];
-    const product = products.find(p => p.name === productName);
+    const product = products.find(p => p.id === productId);
     
     if (!product) return;
     
@@ -400,19 +452,27 @@ function updateRefundDisplay() {
 function updateRefundState() {
     const calculateBtn = document.getElementById('refundBtn');
     if (!calculateBtn) return;
-    
+
     const startDate = document.getElementById('startDate')?.value;
     const endDate = document.getElementById('endDate')?.value;
     const hasProductsAvailable = window.products && window.products.length > 0;
-    
-    const isEnabled = selectedRefundProduct && 
-                     selectedRefundProduct.name && 
-                     startDate && 
-                     endDate && 
-                     hasProductsAvailable;
-    
+
+    let isEnabled = false;
+
+    if (selectedRefundProduct && selectedRefundProduct.id && startDate && endDate && hasProductsAvailable) {
+        if (selectedRefundProduct.category === 'Combo') {
+            // Combo: phải tick ít nhất 1 sản phẩm con mới cho tính
+            isEnabled = selectedComboProductsForRefund.length > 0;
+        } else {
+            // Sản phẩm thường
+            isEnabled = true;
+        }
+    }
+
     calculateBtn.disabled = !isEnabled;
 }
+
+
 
 function calculateRefundManual() {
     if (!selectedRefundProduct) {
@@ -435,37 +495,52 @@ function calculateRefundManual() {
 function calculateRefund(product, startDate, endDate) {
     const s = new Date(startDate);
     const e = new Date(endDate);
-    
+
     if (e < s) {
         return { error: 'Ngày kết thúc phải sau ngày bắt đầu!' };
     }
-    
+
     let totalDays = Number(product.duration) || 0;
     const unit = product.durationUnit === 'tháng' ? 'tháng' : 'ngày';
     if (totalDays <= 0) totalDays = 1;
-    if (unit === 'tháng') totalDays *= 30;
-    
+
+    if (unit === 'tháng') {
+        // Tính chính xác số ngày thực tế trong từng tháng kể từ startDate
+        let days = 0;
+        let year = s.getFullYear();
+        let month = s.getMonth();
+        for (let i = 0; i < totalDays; i++) {
+            const daysInThisMonth = new Date(year, month + 1, 0).getDate();
+            days += daysInThisMonth;
+            month++;
+            if (month > 11) {
+                month = 0;
+                year++;
+            }
+        }
+        totalDays = days;
+    }
+
     const daysUsed = Math.max(0, Math.ceil((e - s) / (1000 * 3600 * 24)));
     const daysRemaining = Math.max(0, totalDays - daysUsed);
-    
-    // Validate values to prevent unusual percentages
+
     if (totalDays <= 0) {
         return { error: 'Thời hạn gói không hợp lệ!' };
     }
-    
+
     if (daysUsed < 0 || daysRemaining < 0) {
         return { error: 'Tính toán ngày không hợp lệ!' };
     }
-    
+
     if (daysUsed > totalDays) {
         return { error: 'Thời gian sử dụng vượt quá thời hạn gói. Không thể hoàn.' };
     }
-    
+
     if (daysRemaining <= 0) {
         const perDay = Math.round(product.price / totalDays);
         const usedPercentage = Math.round((daysUsed / totalDays) * 100);
         const planText = `${product.duration} ${product.durationUnit}`;
-        
+
         return {
             product,
             totalDays,
@@ -479,15 +554,13 @@ function calculateRefund(product, startDate, endDate) {
             isExpired: true
         };
     }
-    
+
     const perDay = Math.round(product.price / totalDays);
-    // Compute refund proportionally and round once at the end to avoid double rounding drift
     const refund = Math.round((product.price * daysRemaining) / totalDays);
     const refundPercentage = Math.min(100, Math.max(0, Math.round((daysRemaining / totalDays) * 100)));
     const usedPercentage = Math.min(100, Math.max(0, Math.round((daysUsed / totalDays) * 100)));
     const planText = `${product.duration} ${product.durationUnit}`;
-    
-    
+
     return {
         product,
         totalDays,
@@ -501,6 +574,7 @@ function calculateRefund(product, startDate, endDate) {
         isExpired: false
     };
 }
+
 
 function displayRefundResult(result) {
     const resultElement = document.getElementById('refundResult');
@@ -528,8 +602,8 @@ function displayRefundResult(result) {
     if (customerContent) {
         const message = createCustomerMessage(result);
         customerContent.textContent = message;
-        
-        // Also update the editable textarea
+
+        // Cập nhật luôn textarea tại đây, không cần lặp lại phía dưới
         const messageEditor = document.getElementById('refundCustomerMessageEditor');
         if (messageEditor) {
             messageEditor.value = message;
@@ -721,17 +795,26 @@ function createCustomerMessage(result) {
     const startDate = formatDMY(new Date(document.getElementById('startDate').value));
     const endDate = formatDMY(new Date(document.getElementById('endDate').value));
 
-    // Get saved template
+    // Lấy orderId đã extract (nếu có)
+    let orderId = '';
+    try {
+        const extractedBox = document.getElementById('refundOrderExtractResult');
+        if (extractedBox && extractedBox.dataset) {
+            orderId = extractedBox.dataset.orderId || '';
+        }
+    } catch { }
+
     const template = getSavedTemplate();
-    
-    // Replace variables
+
     return template
+        .replace(/\{\{orderId\}\}/g, orderId || '-')
         .replace(/\{\{productName\}\}/g, result.product.name)
         .replace(/\{\{startDate\}\}/g, startDate)
         .replace(/\{\{endDate\}\}/g, endDate)
         .replace(/\{\{daysRemaining\}\}/g, result.daysRemaining)
         .replace(/\{\{refund\}\}/g, formatPrice(result.refund) + 'đ');
 }
+
 
 function restartRefundForm() {
     selectedRefundProduct = null;
@@ -837,7 +920,7 @@ function updateRefundTab() {
                     }
                 }
             }
-        } catch (e) {
+        } catch (e) {s
             // localStorage not available
         }
     }
@@ -892,8 +975,28 @@ window.initComboRefundSystem = initComboRefundSystem;
 const TEMPLATE_KEY = 'refund_template';
 
 function getDefaultTemplate() {
-    return `Kính gửi Quý khách,\n\nCentrix xin thông tin kết quả hoàn tiền cho gói {{productName}} như sau:\n- Khoảng thời gian tính: {{startDate}} → {{endDate}}\n- Số ngày còn lại: {{daysRemaining}} ngày\n- Số tiền hoàn dự kiến: {{refund}}\n\nCentrix sẽ tiến hành xử lý và chuyển hoàn trong vòng 1–2 ngày làm việc.\nTrân trọng.`;
+    /*
+      Các biến sẽ được thay thế tự động:
+      - {{orderId}}      : Mã đơn hàng
+      - {{productName}}  : Tên gói sản phẩm
+      - {{startDate}}    : Ngày bắt đầu (dd/mm/yyyy)
+      - {{endDate}}      : Ngày kết thúc (dd/mm/yyyy)
+      - {{daysRemaining}}: Số ngày còn lại
+      - {{refund}}       : Số tiền hoàn dự kiến (kèm đơn vị đ)
+    */
+    return `
+Kính gửi Quý khách,
+
+Centrix xin thông tin kết quả hoàn tiền cho đơn  {{orderId}} – gói {{productName}} như sau:
+- Khoảng thời gian tính: {{startDate}} → {{endDate}}
+- Số ngày còn lại: {{daysRemaining}} ngày
+- Số tiền hoàn dự kiến: {{refund}}
+
+Centrix sẽ tiến hành xử lý và chuyển hoàn trong vòng 1–2 ngày làm việc.
+Trân trọng.
+`.trim();
 }
+
 
 function getSavedTemplate() {
     return localStorage.getItem(TEMPLATE_KEY) || getDefaultTemplate();
@@ -922,8 +1025,22 @@ function openTemplateSettings() {
         editor.value = getSavedTemplate();
         modal.style.display = 'flex';
         setTimeout(() => editor.focus(), 100);
+
+        // Gắn realtime preview
+        editor.addEventListener('input', () => {
+            const resultElement = document.getElementById('refundResult');
+            if (resultElement && resultElement.style.display !== 'none') {
+                // Nếu đang có kết quả refund
+                const message = createCustomerMessage(window.lastRefundResult || {});
+                const customerContent = document.getElementById('refundCustomerContent');
+                const messageEditor = document.getElementById('refundCustomerMessageEditor');
+                if (customerContent) customerContent.textContent = message;
+                if (messageEditor) messageEditor.value = message;
+            }
+        });
     }
 }
+
 
 function closeTemplateModal() {
     const modal = document.getElementById('templateModal');
