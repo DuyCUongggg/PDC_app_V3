@@ -12,8 +12,6 @@ let refundSearchSelectedIndex = -1;
 
 // Initialize refund module
 document.addEventListener('DOMContentLoaded', function() {
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Refund module initialized');
-    
     // Initialize combo refund system
     if (typeof initComboRefundSystem === 'function') {
         initComboRefundSystem();
@@ -210,38 +208,39 @@ function selectRefundProduct(productId) {
     
     selectedRefundProduct = product;
     
-    // Update UI
     const searchInput = document.getElementById('refundProductSearchStep1');
     const results = document.getElementById('refundSearchResultsStep1');
     const selectedProductDiv = document.getElementById('refundSelectedProductStep1');
     const selectedProductsCard = document.getElementById('refundSelectedProductsCard');
     
-    if (searchInput) searchInput.value = productName;
+    if (searchInput) searchInput.value = product.name || '';   // ✅ fix chính
     if (results) {
         results.style.display = 'none';
         results.classList.remove('show');
     }
     
-    // Show selected product info
     if (selectedProductDiv) {
-        selectedProductDiv.innerHTML = `
-            <div class="refund-selected-item">
-                <div class="refund-selected-item-name">${productName}</div>
-                <div class="refund-selected-item-details">${product.price}đ - ${product.planText}</div>
-            </div>
-        `;
-        selectedProductDiv.style.display = 'block';
-    }
+  const planText = (product.duration && product.durationUnit)
+    ? `${product.duration} ${product.durationUnit}`
+    : ''; // fallback an toàn
+
+  selectedProductDiv.innerHTML = `
+    <div class="refund-selected-item">
+      <div class="refund-selected-item-name">${product.name}</div>
+      <div class="refund-selected-item-details">
+        ${formatPrice(product.price)}đ${planText ? ` - ${planText}` : ''}
+      </div>
+    </div>
+  `;
+  selectedProductDiv.style.display = 'block';
+}
     
-    // Show package info card
     if (selectedProductsCard) {
         selectedProductsCard.style.display = 'block';
     }
     
-    // Reset selected index
     refundSearchSelectedIndex = -1;
     
-    // Handle combo products
     if (product.category === 'Combo' && product.comboProducts) {
         showComboRefundSection(product);
     } else {
@@ -250,7 +249,13 @@ function selectRefundProduct(productId) {
     
     updateRefundState();
     updateRefundDisplay();
+    window.selectedRefundProduct = selectedRefundProduct; // ✅ giữ tham chiếu toàn cục
+    
+    // Auto-fill start date with today when product is selected
+    autoFillRefundStartDate();
+
 }
+
 
 function showComboRefundSection(comboProduct) {
     const comboSection = document.getElementById('comboRefundSection');
@@ -315,10 +320,21 @@ function updateRefundDisplay() {
     let extractedOrderId = '';
     let extractedIsoDate = '';
     try {
-        const extractedBox = document.getElementById('refundOrderExtractResult');
-        if (extractedBox && extractedBox.dataset) {
-            extractedOrderId = extractedBox.dataset.orderId || '';
-            extractedIsoDate = extractedBox.dataset.isoDate || '';
+        // Try to get from global variables first
+        if (window.__extractedOrderId) {
+            extractedOrderId = window.__extractedOrderId;
+        }
+        if (window.__extractedPurchaseDate) {
+            extractedIsoDate = window.__extractedPurchaseDate;
+        }
+        
+        // Fallback to old method
+        if (!extractedOrderId || !extractedIsoDate) {
+            const extractedBox = document.getElementById('refundOrderExtractResult');
+            if (extractedBox && extractedBox.dataset) {
+                extractedOrderId = extractedBox.dataset.orderId || '';
+                extractedIsoDate = extractedBox.dataset.isoDate || '';
+            }
         }
     } catch {}
     
@@ -374,9 +390,9 @@ function updateRefundDisplay() {
                 // Also show extracted order info (if any) applied in Step 1
                 let orderInfoHTML = '';
                 try {
-                    const extractedBox = document.getElementById('refundOrderExtractResult');
-                    const orderId = extractedBox && extractedBox.dataset ? extractedBox.dataset.orderId : '';
-                    const isoDate = extractedBox && extractedBox.dataset ? extractedBox.dataset.isoDate : '';
+                    // Use global variables for extracted order info
+                    const orderId = window.__extractedOrderId || '';
+                    const isoDate = window.__extractedPurchaseDate || '';
                     const dmy = isoDate ? formatDMY(new Date(isoDate)) : '';
                     if (orderId || dmy) {
                         orderInfoHTML = `
@@ -406,6 +422,8 @@ function updateRefundDisplay() {
                     </div>
                 `;
             }
+            updateRefundState(); // ✅ Gọi lại để kiểm tra khi card đã hiển thị đủ thông tin
+
         }
     } else {
         // When no product selected, still show order info if it exists
@@ -453,24 +471,30 @@ function updateRefundState() {
     const calculateBtn = document.getElementById('refundBtn');
     if (!calculateBtn) return;
 
-    const startDate = document.getElementById('startDate')?.value;
-    const endDate = document.getElementById('endDate')?.value;
-    const hasProductsAvailable = window.products && window.products.length > 0;
-
-    let isEnabled = false;
-
-    if (selectedRefundProduct && selectedRefundProduct.id && startDate && endDate && hasProductsAvailable) {
-        if (selectedRefundProduct.category === 'Combo') {
-            // Combo: phải tick ít nhất 1 sản phẩm con mới cho tính
-            isEnabled = selectedComboProductsForRefund.length > 0;
-        } else {
-            // Sản phẩm thường
-            isEnabled = true;
-        }
+    const card = document.getElementById('refundSelectedProductsCard');
+    if (!card) {
+        calculateBtn.disabled = true;
+        return;
     }
 
-    calculateBtn.disabled = !isEnabled;
+    // Kiểm tra xem card đã hiển thị đủ thông tin chưa
+    const cardText = card.innerText || '';
+
+    // Dò 4 yếu tố bắt buộc: Giá, Thời hạn, Mã đơn, Ngày mua
+    const hasPrice = /Giá\s*:\s*\d/.test(cardText);
+    const hasDuration = /Thời hạn\s*:\s*\d/.test(cardText);
+    const hasOrder = /Mã\s*đơn\s*:\s*[A-Za-z0-9]/.test(cardText);
+    const hasPurchaseDate = /Ngày\s*mua\s*:\s*\d{2}\/\d{2}\/\d{4}/.test(cardText);
+
+    const isFullInfo = hasPrice && hasDuration && hasOrder && hasPurchaseDate;
+
+   if (isFullInfo && selectedRefundProduct && selectedRefundProduct.id) {
+    calculateBtn.disabled = false;
+} else {
+    calculateBtn.disabled = true;
 }
+}
+
 
 
 
@@ -480,10 +504,25 @@ function calculateRefundManual() {
         return;
     }
     
-    const startDate = document.getElementById('startDate')?.value;
-    const endDate = document.getElementById('endDate')?.value;
+    // Check for valid date range in either card
+    const purchaseStartDate = document.getElementById('purchaseStartDate')?.value;
+    const purchaseEndDate = document.getElementById('purchaseEndDate')?.value;
+    const refundStartDate = document.getElementById('refundStartDate')?.value;
+    const refundEndDate = document.getElementById('refundEndDate')?.value;
     
-    if (!startDate || !endDate) {
+    let startDate, endDate;
+    
+    // Check Card 1: Từ ngày mua → Đến ngày hoàn
+    if (purchaseStartDate && purchaseEndDate) {
+        startDate = purchaseStartDate;
+        endDate = purchaseEndDate;
+    }
+    // Check Card 2: Từ ngày hoàn → Đến ngày hết gói
+    else if (refundStartDate && refundEndDate) {
+        startDate = refundStartDate;
+        endDate = refundEndDate;
+    }
+    else {
         showNotification('Vui lòng chọn khoảng thời gian!', 'error');
         return;
     }
@@ -505,23 +544,10 @@ function calculateRefund(product, startDate, endDate) {
     if (totalDays <= 0) totalDays = 1;
 
     if (unit === 'tháng') {
-        // Tính chính xác số ngày thực tế trong từng tháng kể từ startDate
-        let days = 0;
-        let year = s.getFullYear();
-        let month = s.getMonth();
-        for (let i = 0; i < totalDays; i++) {
-            const daysInThisMonth = new Date(year, month + 1, 0).getDate();
-            days += daysInThisMonth;
-            month++;
-            if (month > 11) {
-                month = 0;
-                year++;
-            }
-        }
-        totalDays = days;
-    }
-
-    const daysUsed = Math.max(0, Math.ceil((e - s) / (1000 * 3600 * 24)));
+    // Cố định mỗi tháng = 30 ngày
+    totalDays = totalDays * 30;
+}
+    const daysUsed = Math.max(0, Math.floor((e - s) / (1000 * 3600 * 24)));
     const daysRemaining = Math.max(0, totalDays - daysUsed);
 
     if (totalDays <= 0) {
@@ -578,7 +604,10 @@ function calculateRefund(product, startDate, endDate) {
 
 function displayRefundResult(result) {
     const resultElement = document.getElementById('refundResult');
-    if (!resultElement) return;
+    if (!resultElement) {
+        showNotification('Không tìm thấy phần hiển thị kết quả!', 'error');
+        return;
+    }
     
     // Hide result initially
     resultElement.style.display = 'none';
@@ -618,28 +647,54 @@ function displayRefundResult(result) {
     }
     
     // FORCE EQUAL COLUMNS WITH JAVASCRIPT
-    setTimeout(() => {
-        const container = document.querySelector('.refund-results-container');
-        const leftCol = document.querySelector('.refund-left-column');
-        const rightCol = document.querySelector('.refund-right-column');
-        
-        if (container && leftCol && rightCol) {
-            // Force grid layout
-            container.style.cssText = 'display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 30px !important; width: 100% !important; max-width: 100% !important;';
-            
-            // Force grid columns
-            leftCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 1 !important;';
-            rightCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 2 !important; overflow: hidden !important;';
-        }
-    }, 100);
+   setTimeout(() => {
+    const container = document.querySelector('.refund-results-container');
+    if (container) {
+        container.classList.add('refund-grid-equal');
+    }
+}, 100);
+
     
+    // ✅ Lưu kết quả hoàn tiền toàn cục để template realtime hoạt động
+    window.lastRefundResult = result;
+    
+    // ✅ Hiển thị lại phần kết quả sau khi đã render xong
     resultElement.style.display = 'block';
-    resultElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    
+    // Scroll to result
+    setTimeout(() => {
+        resultElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+
+
 }
 
 function createExpiredBreakdownHTML(result) {
-    const startDate = formatDMY(new Date(document.getElementById('startDate').value));
-    const endDate = formatDMY(new Date(document.getElementById('endDate').value));
+    // Get dates from the current form inputs
+    const purchaseStartDate = document.getElementById('purchaseStartDate')?.value;
+    const purchaseEndDate = document.getElementById('purchaseEndDate')?.value;
+    const refundStartDate = document.getElementById('refundStartDate')?.value;
+    const refundEndDate = document.getElementById('refundEndDate')?.value;
+    
+    let startDate;
+    
+    if (purchaseStartDate && purchaseEndDate) {
+        startDate = formatDMY(new Date(purchaseStartDate));
+    } else if (refundStartDate && refundEndDate) {
+        startDate = formatDMY(new Date(refundStartDate));
+    } else {
+        startDate = formatDMY(new Date());
+    }
+    
+    let endDate;
+    
+    if (purchaseStartDate && purchaseEndDate) {
+        endDate = formatDMY(new Date(purchaseEndDate));
+    } else if (refundStartDate && refundEndDate) {
+        endDate = formatDMY(new Date(refundEndDate));
+    } else {
+        endDate = formatDMY(new Date());
+    }
     
     return `
                     
@@ -715,8 +770,26 @@ function createExpiredBreakdownHTML(result) {
 }
 
 function createRefundBreakdownHTML(result) {
-    const startDate = formatDMY(new Date(document.getElementById('startDate').value));
-    const endDate = formatDMY(new Date(document.getElementById('endDate').value));
+    // Get dates from the current form inputs
+    const purchaseStartDate = document.getElementById('purchaseStartDate')?.value;
+    const purchaseEndDate = document.getElementById('purchaseEndDate')?.value;
+    const refundStartDate = document.getElementById('refundStartDate')?.value;
+    const refundEndDate = document.getElementById('refundEndDate')?.value;
+    
+    let startDate, endDate;
+    
+    // Use the dates that were actually used for calculation
+    if (purchaseStartDate && purchaseEndDate) {
+        startDate = formatDMY(new Date(purchaseStartDate));
+        endDate = formatDMY(new Date(purchaseEndDate));
+    } else if (refundStartDate && refundEndDate) {
+        startDate = formatDMY(new Date(refundStartDate));
+        endDate = formatDMY(new Date(refundEndDate));
+    } else {
+        // Fallback to current date if no dates found
+        startDate = formatDMY(new Date());
+        endDate = formatDMY(new Date());
+    }
     
     return `
                     
@@ -792,8 +865,31 @@ function createRefundBreakdownHTML(result) {
 }
 
 function createCustomerMessage(result) {
-    const startDate = formatDMY(new Date(document.getElementById('startDate').value));
-    const endDate = formatDMY(new Date(document.getElementById('endDate').value));
+    // Get dates from the current form inputs
+    const purchaseStartDate = document.getElementById('purchaseStartDate')?.value;
+    const purchaseEndDate = document.getElementById('purchaseEndDate')?.value;
+    const refundStartDate = document.getElementById('refundStartDate')?.value;
+    const refundEndDate = document.getElementById('refundEndDate')?.value;
+    
+    let startDate;
+    
+    if (purchaseStartDate && purchaseEndDate) {
+        startDate = formatDMY(new Date(purchaseStartDate));
+    } else if (refundStartDate && refundEndDate) {
+        startDate = formatDMY(new Date(refundStartDate));
+    } else {
+        startDate = formatDMY(new Date());
+    }
+    
+    let endDate;
+    
+    if (purchaseStartDate && purchaseEndDate) {
+        endDate = formatDMY(new Date(purchaseEndDate));
+    } else if (refundStartDate && refundEndDate) {
+        endDate = formatDMY(new Date(refundEndDate));
+    } else {
+        endDate = formatDMY(new Date());
+    }
 
     // Lấy orderId đã extract (nếu có)
     let orderId = '';
@@ -882,12 +978,142 @@ function setToday(inputId) {
 
 // Helper: set Step 3 start date and update state
 function setRefundStartDate(iso) {
+    const purchaseStartDate = document.getElementById('purchaseStartDate');
+    if (purchaseStartDate) {
+        purchaseStartDate.value = iso;
+        purchaseStartDate.dispatchEvent(new Event('change'));
+    }
+}
+
+// Helper: set Step 3 end date (expiry date)
+function setRefundEndDate(iso) {
+    const refundEndDate = document.getElementById('refundEndDate');
+    if (refundEndDate) {
+        refundEndDate.value = iso;
+        refundEndDate.dispatchEvent(new Event('change'));
+    }
+}
+
+// Calculate expiry date from purchase date (+30 days)
+function calculateExpiryDateFromPurchase(purchaseDateISO) {
+    const purchaseDate = new Date(purchaseDateISO);
+    const expiryDate = new Date(purchaseDate);
+    expiryDate.setDate(expiryDate.getDate() + 30);
+    return expiryDate.toISOString().split('T')[0];
+}
+
+// Clear all refund date inputs
+function clearAllRefundDates() {
+    const dateInputs = ['purchaseStartDate', 'purchaseEndDate', 'refundStartDate', 'refundEndDate'];
+    dateInputs.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.value = '';
+            input.dispatchEvent(new Event('change'));
+        }
+    });
+    showNotification('Đã xóa tất cả ngày', 'info');
+}
+
+
+// Get currently selected refund product
+function getSelectedRefundProduct() {
+    return selectedRefundProduct || null;
+}
+
+// Calculate product expiry date based on duration
+function calculateProductExpiryDate(product, startDate) {
+    if (!product || !product.duration || !product.durationUnit) return null;
+    
+    const duration = parseInt(product.duration) || 0;
+    const unit = product.durationUnit;
+    
+    if (duration <= 0) return null;
+    
+    const expiryDate = new Date(startDate);
+    
+    switch (unit) {
+        case 'ngày':
+            expiryDate.setDate(expiryDate.getDate() + duration);
+            break;
+        case 'tháng':
+            expiryDate.setMonth(expiryDate.getMonth() + duration);
+            break;
+        case 'năm':
+            expiryDate.setFullYear(expiryDate.getFullYear() + duration);
+            break;
+        default:
+            return null;
+    }
+    
+    return expiryDate;
+}
+
+// Auto-fill start date with today when product is selected (legacy function)
+function autoFillRefundStartDate() {
+    // Only auto-fill if no time range mode is selected
+    const btnRefundToExpiry = document.getElementById('btnRefundToExpiry');
+    if (btnRefundToExpiry && btnRefundToExpiry.classList.contains('active')) {
+        return; // Don't auto-fill if in "refund-to-expiry" mode
+    }
+    
     const startDate = document.getElementById('startDate');
-    if (startDate) {
-        startDate.value = iso;
+    if (!startDate) return;
+    
+    // Only auto-fill if start date is empty
+    if (!startDate.value) {
+        const today = new Date();
+        const todayISO = today.toISOString().split('T')[0];
+        startDate.value = todayISO;
         startDate.dispatchEvent(new Event('change'));
     }
 }
+
+// Sync refund dates between cards
+function syncRefundDates() {
+    const purchaseEndDate = document.getElementById('purchaseEndDate');
+    const refundStartDate = document.getElementById('refundStartDate');
+    
+    if (!purchaseEndDate || !refundStartDate) return;
+    
+    // Remove existing listeners to prevent duplicates
+    purchaseEndDate.removeEventListener('change', syncPurchaseToRefund);
+    refundStartDate.removeEventListener('change', syncRefundToPurchase);
+    
+    // Sync purchaseEndDate to refundStartDate
+    purchaseEndDate.addEventListener('change', syncPurchaseToRefund);
+    
+    // Sync refundStartDate to purchaseEndDate
+    refundStartDate.addEventListener('change', syncRefundToPurchase);
+}
+
+function syncPurchaseToRefund() {
+    const purchaseEndDate = document.getElementById('purchaseEndDate');
+    const refundStartDate = document.getElementById('refundStartDate');
+    
+    if (purchaseEndDate && refundStartDate && purchaseEndDate.value) {
+        refundStartDate.value = purchaseEndDate.value;
+        // Don't trigger change event to prevent infinite loop
+    }
+}
+
+function syncRefundToPurchase() {
+    const purchaseEndDate = document.getElementById('purchaseEndDate');
+    const refundStartDate = document.getElementById('refundStartDate');
+    
+    if (purchaseEndDate && refundStartDate && refundStartDate.value) {
+        purchaseEndDate.value = refundStartDate.value;
+        // Don't trigger change event to prevent infinite loop
+    }
+}
+
+// Initialize refund date sync when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    syncRefundDates();
+});
+
+// Export functions to global scope
+window.clearAllRefundDates = clearAllRefundDates;
 
 // Main function to update refund tab visibility
 function updateRefundTab() {
@@ -920,7 +1146,7 @@ function updateRefundTab() {
                     }
                 }
             }
-        } catch (e) {s
+        } catch (e) {
             // localStorage not available
         }
     }
@@ -951,12 +1177,15 @@ function updateRefundTab() {
         if (emptyState) emptyState.style.display = 'none';
         if (mainContent) mainContent.style.display = 'grid';
         if (calculateSection) calculateSection.style.display = 'block';
+        if (selectedRefundProduct && selectedRefundProduct.id) {
+    updateRefundDisplay(); // ✅ tái render lại card và giữ sản phẩm
+}
+
     }
 }
 
 // Initialize combo refund system
 function initComboRefundSystem() {
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Combo refund system initialized');
     // This function is called from app.js
 }
 
@@ -971,114 +1200,28 @@ window.toggleRefundTheme = toggleRefundTheme;
 window.setToday = setToday;
 window.initComboRefundSystem = initComboRefundSystem;
 
-// ========== Template settings (simple) ==========
-const TEMPLATE_KEY = 'refund_template';
 
-function getDefaultTemplate() {
-    /*
-      Các biến sẽ được thay thế tự động:
-      - {{orderId}}      : Mã đơn hàng
-      - {{productName}}  : Tên gói sản phẩm
-      - {{startDate}}    : Ngày bắt đầu (dd/mm/yyyy)
-      - {{endDate}}      : Ngày kết thúc (dd/mm/yyyy)
-      - {{daysRemaining}}: Số ngày còn lại
-      - {{refund}}       : Số tiền hoàn dự kiến (kèm đơn vị đ)
-    */
-    return `
-Kính gửi Quý khách,
-
-Centrix xin thông tin kết quả hoàn tiền cho đơn  {{orderId}} – gói {{productName}} như sau:
-- Khoảng thời gian tính: {{startDate}} → {{endDate}}
-- Số ngày còn lại: {{daysRemaining}} ngày
-- Số tiền hoàn dự kiến: {{refund}}
-
-Centrix sẽ tiến hành xử lý và chuyển hoàn trong vòng 1–2 ngày làm việc.
-Trân trọng.
-`.trim();
-}
-
-
-function getSavedTemplate() {
-    return localStorage.getItem(TEMPLATE_KEY) || getDefaultTemplate();
-}
-
-function saveTemplate() {
-    const editor = document.getElementById('templateEditor');
-    if (editor) {
-        localStorage.setItem(TEMPLATE_KEY, editor.value);
-        alert('Đã lưu mẫu!');
-    }
-}
-
-function resetTemplate() {
-    const editor = document.getElementById('templateEditor');
-    if (editor) {
-        editor.value = getDefaultTemplate();
-        alert('Đã khôi phục mẫu mặc định!');
-    }
-}
-
-function openTemplateSettings() {
-    const modal = document.getElementById('templateModal');
-    const editor = document.getElementById('templateEditor');
-    if (modal && editor) {
-        editor.value = getSavedTemplate();
-        modal.style.display = 'flex';
-        setTimeout(() => editor.focus(), 100);
-
-        // Gắn realtime preview
-        editor.addEventListener('input', () => {
-            const resultElement = document.getElementById('refundResult');
-            if (resultElement && resultElement.style.display !== 'none') {
-                // Nếu đang có kết quả refund
-                const message = createCustomerMessage(window.lastRefundResult || {});
-                const customerContent = document.getElementById('refundCustomerContent');
-                const messageEditor = document.getElementById('refundCustomerMessageEditor');
-                if (customerContent) customerContent.textContent = message;
-                if (messageEditor) messageEditor.value = message;
-            }
-        });
-    }
-}
-
-
-function closeTemplateModal() {
-    const modal = document.getElementById('templateModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-// Export functions
-window.openTemplateSettings = openTemplateSettings;
-window.closeTemplateModal = closeTemplateModal;
-window.saveTemplate = saveTemplate;
-window.resetTemplate = resetTemplate;
 
 // Force equal columns on page load
 document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         const container = document.querySelector('.refund-results-container');
-        const leftCol = document.querySelector('.refund-left-column');
-        const rightCol = document.querySelector('.refund-right-column');
-        
-        if (container && leftCol && rightCol) {
-            // Force grid layout
-            container.style.cssText = 'display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 30px !important; width: 100% !important; max-width: 100% !important;';
-            
-            // Force grid columns
-            leftCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 1 !important;';
-            rightCol.style.cssText = 'display: flex !important; flex-direction: column !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; grid-column: 2 !important; overflow: hidden !important;';
+        if (container) {
+            container.classList.add('refund-grid-equal');
         }
     }, 500);
+});
+
 });
 
 // --- Minimal order extractor (order id + purchase date) ---
 function extractRefundOrderInfo() {
     try {
         const input = document.getElementById('refundOrderInput');
-        const resultBox = document.getElementById('refundOrderExtractResult');
-        if (!input || !resultBox) return;
+        if (!input) {
+            return;
+        }
 
         const text = (input.value || '').trim();
         if (!text) {
@@ -1089,10 +1232,14 @@ function extractRefundOrderInfo() {
         // Try pattern A: [Đơn hàng #71946] (28/09/2025)
         const a = parseRefundPatternA(text);
         if (a) {
-            updateOrderExtractUI(a.orderId, a.purchaseDate);
+            // Calculate expiry date (+30 days from purchase date)
+            const calculatedExpiryDate = calculateExpiryDateFromPurchase(a.purchaseDate);
+            updateOrderExtractUI(a.orderId, a.purchaseDate, calculatedExpiryDate);
             // Auto-apply purchase date to Step 3
             setRefundStartDate(a.purchaseDate);
-            showNotification('Đã trích xuất theo Mẫu 1 và áp dụng ngày mua', 'success');
+            // Auto-apply calculated expiry date
+            setRefundEndDate(calculatedExpiryDate);
+            showNotification(`Đã trích xuất theo Mẫu 1. Ngày mua: ${formatDMY(new Date(a.purchaseDate))}, Ngày hết gói: ${formatDMY(new Date(calculatedExpiryDate))}`, 'success');
             // Reflect immediately in package info card
             updateRefundDisplay();
             return;
@@ -1101,10 +1248,14 @@ function extractRefundOrderInfo() {
         // Try pattern B: email, price, ORDERID RESELLER, statuses, date time
         const b = parseRefundPatternB(text);
         if (b) {
-            updateOrderExtractUI(b.orderId, b.purchaseDate);
+            // Calculate expiry date (+30 days from purchase date)
+            const calculatedExpiryDate = calculateExpiryDateFromPurchase(b.purchaseDate);
+            updateOrderExtractUI(b.orderId, b.purchaseDate, calculatedExpiryDate);
             // Auto-apply purchase date to Step 3
             setRefundStartDate(b.purchaseDate);
-            showNotification('Đã trích xuất theo Mẫu 2 và áp dụng ngày mua', 'success');
+            // Auto-apply calculated expiry date
+            setRefundEndDate(calculatedExpiryDate);
+            showNotification(`Đã trích xuất theo Mẫu 2. Ngày mua: ${formatDMY(new Date(b.purchaseDate))}, Ngày hết gói: ${formatDMY(new Date(calculatedExpiryDate))}`, 'success');
             // Reflect immediately in package info card
             updateRefundDisplay();
             return;
@@ -1113,7 +1264,7 @@ function extractRefundOrderInfo() {
         showNotification('Không nhận diện được mẫu dữ liệu!', 'error');
         resultBox.style.display = 'none';
     } catch (e) {
-        console.error('extractRefundOrderInfo error:', e);
+        // Handle error silently
     }
 }
 
@@ -1133,13 +1284,18 @@ function parseRefundPatternA(text) {
 function parseRefundPatternB(text) {
     // Expected lines include: email, price, ORDER RESELLER, PAID, SUCCESS, dd/mm/yyyy hh:mm
     const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+    
     if (lines.length < 4) return null;
 
     // Find line containing RESELLER or long order code
     const orderLine = lines.find(l => /RESELLER/i.test(l) || /[A-Z0-9]{6,}/.test(l));
+    
     // Find date with dd/mm/yyyy optionally with time
     const dateLine = lines.find(l => /(\d{2}\/\d{2}\/\d{4})/.test(l));
-    if (!orderLine || !dateLine) return null;
+    
+    if (!orderLine || !dateLine) {
+        return null;
+    }
 
     const orderId = orderLine.trim();
     const dateMatch = dateLine.match(/(\d{2}\/\d{2}\/\d{4})/);
@@ -1149,30 +1305,52 @@ function parseRefundPatternB(text) {
     return { orderId, purchaseDate: iso };
 }
 
-function updateOrderExtractUI(orderId, isoDate) {
-    const resultBox = document.getElementById('refundOrderExtractResult');
-    const idEl = document.getElementById('extractedOrderIdMini');
-    const dateEl = document.getElementById('extractedPurchaseDateMini');
-    if (!resultBox || !idEl || !dateEl) return;
-    idEl.textContent = orderId;
-    dateEl.textContent = formatDMY(new Date(isoDate));
-    resultBox.style.display = 'block';
-    // Store on element dataset for apply step
-    resultBox.dataset.orderId = orderId;
-    resultBox.dataset.isoDate = isoDate;
+function updateOrderExtractUI(orderId, isoDate, expiryDate = null) {
+    // Store extracted data for later use
+    window.__extractedOrderId = orderId;
+    window.__extractedPurchaseDate = isoDate;
+    window.__extractedExpiryDate = expiryDate;
+    
+    // Show the main products card (Bước 4) to display order info
+    const selectedProductsCard = document.getElementById('refundSelectedProductsCard');
+    if (selectedProductsCard) {
+        selectedProductsCard.style.display = 'block';
+        selectedProductsCard.style.visibility = 'visible';
+        selectedProductsCard.style.opacity = '1';
+    }
+    
+    // Force scroll to the selected products card after a short delay
+    setTimeout(() => {
+        if (selectedProductsCard) {
+            selectedProductsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 100);
 }
 
 // Removed applyExtractedOrderInfo - now auto-applied in extractRefundOrderInfo
 
 function clearRefundOrderInfo() {
     const input = document.getElementById('refundOrderInput');
-    const resultBox = document.getElementById('refundOrderExtractResult');
     if (input) input.value = '';
-    if (resultBox) { 
-        resultBox.style.display = 'none'; 
-        resultBox.dataset.orderId = ''; 
-        resultBox.dataset.isoDate = ''; 
+    
+    // Clear order information card
+    const orderIdField = document.getElementById('refundOrderId');
+    const purchaseDateField = document.getElementById('refundPurchaseDate');
+    const orderInfoSection = document.getElementById('refundOrderInfo');
+    
+    if (orderIdField) orderIdField.value = '';
+    if (purchaseDateField) purchaseDateField.value = '';
+    
+    // Hide order information section
+    if (orderInfoSection) {
+        orderInfoSection.style.display = 'none';
     }
+    
+    // Clear stored data
+    window.__extractedOrderId = null;
+    window.__extractedPurchaseDate = null;
+    window.__extractedExpiryDate = null;
+    
     updateRefundState();
 }
 
@@ -1226,7 +1404,6 @@ function clearRefundDates() {
     const resultBox = document.getElementById('refundOrderExtractResult');
     if (resultBox && resultBox.dataset.isoDate) {
         // Don't clear the order info, just the applied dates
-        console.log('Clearing applied dates');
     }
     
     updateRefundState();

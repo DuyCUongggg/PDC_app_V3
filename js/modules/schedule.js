@@ -61,7 +61,6 @@ function loadScheduleData() {
             scheduleData.people = parsed.people || scheduleData.people;
         }
     } catch (e) {
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('No saved schedule data found');
     }
 }
 
@@ -69,7 +68,7 @@ function saveScheduleData() {
     try {
         localStorage.setItem('schedule_data', JSON.stringify(scheduleData));
     } catch (e) {
-        console.error('Error saving schedule data:', e);
+        // Handle error silently
     }
 }
 
@@ -326,13 +325,13 @@ function ingestScheduleCsv(rows) {
         const day = normalizeDay(dayRaw);
         const shiftType = normalizeShift(shiftRaw);
         if (!day || !shiftConfigs[shiftType]) {
-            console.error('Bỏ qua dòng CSV do không hợp lệ:', row);
+            // Handle error silently
             continue;
         }
         // Check conflicts
         const conflicts = checkShiftConflicts(person.id, day, shiftType);
         if (conflicts.length > 0) {
-            console.warn('Bỏ qua ca trùng lặp cho', name, day, shiftType);
+            // Handle error silently
             continue;
         }
         scheduleData.shifts.push({
@@ -1453,7 +1452,7 @@ function ingestPastedSchedule() {
         closePasteScheduleModal();
         showNotification(`Đã nhập ${result.shiftsAdded} ca, ${result.peopleAdded} người từ bảng dán!`, 'success');
     } catch (e) {
-        console.error(e);
+        // Handle error silently
         showNotification('Không thể đọc bảng dán. Vui lòng kiểm tra định dạng.', 'error');
     }
 }

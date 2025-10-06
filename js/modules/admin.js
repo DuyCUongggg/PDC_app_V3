@@ -1,10 +1,4 @@
 ﻿// ===== ADMIN MODULE =====
-// Các function này đã được implement trong app.js
-// File này chỉ để giữ cấu trúc module
-
-// updateTemplateTab is defined in templates.js 
-
-// updateRefundTab() is implemented in refund.js
 
 // New Admin UI Functions
 function toggleSelectAll() {
@@ -45,8 +39,6 @@ function deleteSelectedProducts() {
 
 function changePage(pageNumber) {
     // Implement pagination logic here
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Changing to page:', pageNumber);
-    // This would need to be implemented based on your pagination needs
 }
 
 // Populate AI selection from existing AI products
@@ -76,11 +68,9 @@ function populateAISelection() {
                 aiSelectionGrid.appendChild(checkbox);
             });
         } else {
-            // Show message if no AI products found
             aiSelectionGrid.innerHTML = '<p style="color: #666; font-style: italic;">Chưa có sản phẩm AI nào. Hãy thêm sản phẩm AI trước.</p>';
         }
     } else {
-        // Show message if no products found
         aiSelectionGrid.innerHTML = '<p style="color: #666; font-style: italic;">Chưa có sản phẩm nào. Hãy thêm sản phẩm trước.</p>';
     }
 }
@@ -94,7 +84,6 @@ document.addEventListener('DOMContentLoaded', function() {
         categorySelect.addEventListener('change', function() {
             if (this.value === 'Combo') {
                 comboAISection.style.display = 'block';
-                // Populate AI selection when combo section is shown
                 populateAISelection();
             } else {
                 comboAISection.style.display = 'none';

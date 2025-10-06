@@ -46,7 +46,6 @@ class FamilyEmailChecker {
 
     // Parse family có chủ (bỏ email đầu tiên)
     parseFamilyWithOrganizer(lines) {
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Parsing family WITH organizer');
         const emails = [];
         let skipFirstEmail = true;
         let currentName = null;
@@ -70,7 +69,6 @@ class FamilyEmailChecker {
                 // Bỏ qua email đầu tiên (của chủ family)
                 if (skipFirstEmail) {
                     skipFirstEmail = false;
-                    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Skipped organizer email:', line);
                     continue;
                 }
                 
@@ -86,13 +84,11 @@ class FamilyEmailChecker {
             }
         }
         
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Family emails with organizer:', emails);
         return emails;
     }
 
     // Parse family không có chủ
     parseFamilyWithoutOrganizer(lines) {
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Parsing family WITHOUT organizer');
         const emails = [];
         let currentName = null;
         
@@ -112,7 +108,6 @@ class FamilyEmailChecker {
             }
         }
         
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Family emails without organizer:', emails);
         return emails;
     }
 
@@ -137,7 +132,6 @@ class FamilyEmailChecker {
             }
         });
         
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Stored emails parsed (100% rule):', emails);
         return emails;
     }
 
@@ -181,12 +175,9 @@ class FamilyEmailChecker {
     calculatePartialEmailSimilarity(completeEmail, partialEmail) {
         const usernameMatch = completeEmail.split('@')[0];
         
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Comparing: "${completeEmail}" vs "${partialEmail}"`);
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Username: "${usernameMatch}"`);
         
         // Trường hợp 1: partialEmail chỉ là username (vd: thanhthao.041093)
         if (partialEmail === usernameMatch) {
-            if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Case 1: Exact username match → 0.85');
             return 0.85; // Tương tự cao - CÓ THỂ ĐÚNG
         }
         
@@ -194,7 +185,6 @@ class FamilyEmailChecker {
         if (completeEmail.startsWith(partialEmail)) {
             const similarity = partialEmail.length / completeEmail.length;
             const result = Math.max(0.75, similarity);
-            if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Case 2: Starts with → ${result}`);
             return result; // Ít nhất 75% - CÓ THỂ ĐÚNG
         }
         
@@ -204,7 +194,6 @@ class FamilyEmailChecker {
             const maxLength = Math.max(usernameMatch.length, partialEmail.length);
             const similarity = maxLength === 0 ? 1 : 1 - (distance / maxLength);
             const result = Math.max(0.6, similarity);
-            if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Case 3: Contains username → ${result}`);
             return result; // Ít nhất 60% - CÓ THỂ ĐÚNG
         }
         
@@ -212,7 +201,6 @@ class FamilyEmailChecker {
         const distance = this.levenshteinDistance(completeEmail, partialEmail);
         const maxLength = Math.max(completeEmail.length, partialEmail.length);
         const result = maxLength === 0 ? 1 : 1 - (distance / maxLength);
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Case 4: Normal comparison → ${result}`);
         return result;
     }
 
@@ -260,7 +248,6 @@ class FamilyEmailChecker {
                     storedEmails[j].email
                 );
                 
-                if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Similarity check: "${familyEmails[i].email}" vs "${storedEmails[j].email}" = ${similarity} (threshold: ${this.similarityThreshold})`);
                 
                 if (similarity >= this.similarityThreshold) {
                     similarPairs.push({
@@ -374,7 +361,7 @@ class FamilyEmailChecker {
     classifyEmailComparisonCase(result) {
         // Kiểm tra tính hợp lệ của dữ liệu đầu vào
         if (!result || typeof result !== 'object') {
-            console.warn('Invalid result object for classification');
+            // Handle error silently
             return 'unknown';
         }
 
@@ -405,7 +392,7 @@ class FamilyEmailChecker {
         }
         
         // Fallback - trường hợp không xác định được
-        console.warn('Unable to classify email comparison case', { result, metrics });
+        // Handle error silently
         return 'unknown';
     }
 
@@ -470,7 +457,6 @@ class FamilyEmailChecker {
             const avgSimilarity = result.similarPairs.reduce((sum, pair) => 
                 sum + (pair.similarity || 0), 0) / result.similarPairs.length;
             
-            if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('isDifferentCase - avgSimilarity:', avgSimilarity);
             
             // Giảm threshold để ưu tiên "CÓ THỂ ĐẠT" cho email không hoàn chỉnh
             // Chỉ coi là KHÔNG ĐẠT nếu độ tương tự < 30%
@@ -491,7 +477,6 @@ class FamilyEmailChecker {
                 const avgSimilarity = result.similarPairs.reduce((sum, pair) => 
                     sum + (pair.similarity || 0), 0) / result.similarPairs.length;
                 
-                if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('isPossibleCase - avgSimilarity:', avgSimilarity);
                 
                 // Điều chỉnh threshold cho trường hợp email không hoàn chỉnh
                 // Độ tương tự >= 60% -> CÓ THỂ ĐẠT (bao gồm cả gần 100%)
@@ -581,14 +566,13 @@ function updatePairTabs() {
     const emailContainers = document.getElementById('emailContainers');
     
     if (!emailContainers) {
-        console.error('Không tìm thấy emailContainers');
+        // Handle error silently
         return;
     }
     
     // Clear existing containers
     emailContainers.innerHTML = '';
     
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original(`Tạo ${numberOfPairs} cặp list mail`);
     
     // Create new containers
     for (let i = 1; i <= numberOfPairs; i++) {
@@ -647,7 +631,7 @@ function checkAllFamilyEmails() {
                 storedText: storedText
             });
         } catch (error) {
-            console.error(`Lỗi khi kiểm tra cặp ${i}:`, error);
+            // Handle error silently
             // Hiển thị toast đỏ cho validation error
             if (error.message.includes('Dòng cuối cùng')) {
                 showValidationToast(error.message);
@@ -684,7 +668,7 @@ function checkFamilyEmails() {
         displayResults(result, status);
         showToast('Kiểm tra hoàn tất!', 'success');
     } catch (error) {
-        console.error('Lỗi khi kiểm tra email:', error);
+        // Handle error silently
         showToast('Có lỗi xảy ra khi kiểm tra email', 'error');
     }
 }
@@ -941,13 +925,13 @@ function clearAllFamilyForms() {
     showToast('Đã xóa tất cả form', 'info');
 }
 
-// Xóa form (hàm cũ để tương thích)
+// Legacy function for compatibility
 function clearFamilyForm() {
     clearAllFamilyForms();
 }
 
 // View mode state
-let currentViewMode = 'detailed'; // 'detailed' hoặc 'overview'
+let currentViewMode = 'detailed';
 
 // Toggle view functions
 function switchToDetailedView() {

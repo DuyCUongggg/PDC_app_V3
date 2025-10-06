@@ -1,14 +1,16 @@
 // ===== NOTES MODULE =====
-let appNotes = [];
 
 // Initialize notes data structure
 if (!window.appData) window.appData = {};
 if (!window.appData.notes) window.appData.notes = [];
 
-// Debounce/guard for fetch so toast không bị spam
+// Debounce/guard for fetch to prevent spam
 let _notesSyncInFlight = false;
 let _lastNotesFetchAt = 0;
-const NOTES_FETCH_MIN_INTERVAL_MS = 15000; // 15s
+const NOTES_FETCH_MIN_INTERVAL_MS = 5000; // 5s - reduced for better real-time sync
+let _notesSyncInterval = null;
+let _notesRetryCount = 0;
+const MAX_RETRY_COUNT = 3;
 
 (function initNotes() {
     // Load notes from localStorage on init
@@ -20,9 +22,16 @@ const NOTES_FETCH_MIN_INTERVAL_MS = 15000; // 15s
     loadSavedTagColors();
     renderSavedTagsUI();
     populateTagSelect();
-    renderMiniSidebarCategories();
-    // Try to pull latest from Google Sheets (Sheet2) và tránh gọi lặp
-    try { scheduleRefreshNotes(0); } catch (e) { console.warn('notes pull failed', e); }
+    // Initialize note form
+    initNoteForm();
+    // Try to pull latest from Google Sheets (Sheet2)
+    try { scheduleRefreshNotes(0); } catch (e) { /* Handle error silently */ }
+    
+    // Start automatic periodic sync
+    startPeriodicSync();
+    
+    // Clean up deleted notes on startup
+    try { cleanupDeletedNotes(); } catch (e) { /* Handle error silently */ }
 })();
 
 // Switch between list and add views
@@ -38,26 +47,9 @@ window.switchNotesView = function(view) {
         addView.style.display = showList ? 'none' : 'block';
         listBtn.classList.toggle('active', showList);
         addBtn.classList.toggle('active', !showList);
-        // sync new inline/dock switches
-        try {
-            const miniListBtn = document.getElementById('miniNotesListBtn');
-            const miniAddBtn = document.getElementById('miniNotesAddBtn');
-            if (miniListBtn && miniAddBtn) {
-                miniListBtn.classList.toggle('active', showList);
-                miniAddBtn.classList.toggle('active', !showList);
-            }
-            const dockList = document.getElementById('dockNotesList');
-            const dockAdd = document.getElementById('dockNotesAdd');
-            if (dockList && dockAdd) {
-                dockList.classList.toggle('active', showList);
-                dockAdd.classList.toggle('active', !showList);
-            }
-        } catch {}
         if (showList) {
             renderNotesList();
         }
-        // update inline toolbar
-        try { renderInlineNotesControls(); } catch {}
     } catch {}
 }
 
@@ -68,23 +60,36 @@ function generateNoteId() {
 
 // Create new note
 function createNote() {
-    const chatLink = document.getElementById('chatLink')?.value.trim();
-    const orderCode = document.getElementById('orderCode')?.value.trim();
     const noteContent = document.getElementById('noteContent')?.value.trim();
     const tagSelect = document.getElementById('noteTagSelect');
     const selectedTag = (tagSelect?.value || '').trim();
     
-    // Validation
+    // Basic validation
+    if (!noteContent) {
+        showNotification('Vui lòng nhập nội dung ghi chú!', 'error');
+        return;
+    }
+    if (!selectedTag) {
+        showNotification('Vui lòng chọn phân loại!', 'error');
+        return;
+    }
+    
+    let chatLink = '';
+    let orderCode = '';
+    let title = '';
+    
+    // Different validation based on tag type
+    if (selectedTag === 'chua-xu-ly') {
+        // For "Chưa xử lý" - require chat link and order code
+        chatLink = document.getElementById('noteChatLink')?.value.trim();
+        orderCode = document.getElementById('noteOrderId')?.value.trim();
+        
     if (!chatLink) {
         showNotification('Vui lòng nhập link chat!', 'error');
         return;
     }
     if (!orderCode) {
         showNotification('Vui lòng nhập mã đơn hàng!', 'error');
-        return;
-    }
-    if (!noteContent) {
-        showNotification('Vui lòng nhập nội dung ghi chú!', 'error');
         return;
     }
     
@@ -94,6 +99,18 @@ function createNote() {
     } catch (e) {
         showNotification('Link chat không hợp lệ! Vui lòng nhập URL đúng định dạng.', 'error');
         return;
+        }
+    } else if (selectedTag === 'note-thong-tin') {
+        // For "Note thông tin" - require title
+        title = document.getElementById('noteTitle')?.value.trim();
+        
+        if (!title) {
+            showNotification('Vui lòng nhập tiêu đề!', 'error');
+            return;
+        }
+        
+        chatLink = '';
+        orderCode = '';
     }
     
     // Build tags string (comma-separated, lowercased, trimmed)
@@ -111,6 +128,7 @@ function createNote() {
         id: generateNoteId(),
         chatLink: chatLink,
         orderCode: orderCode,
+        title: title,
         content: noteContent,
         status: 'active',
         tags,
@@ -131,7 +149,7 @@ function createNote() {
     // Save to localStorage
     saveNotesToStorage();
     // Fire-and-forget sync to Google Sheets for real-time-ish persistence
-    try { syncNotesToGoogleSheets(); } catch (e) { console.error('notes sync error', e); }
+    try { syncNotesToGoogleSheets(); } catch (e) { /* Handle error silently */ }
     
     showNotification('Đã tạo ghi chú! Đang đồng bộ...', 'info');
 }
@@ -139,19 +157,23 @@ window.createNote = createNote;
 
 // Clear note form
 function clearNoteForm() {
-    const fields = ['chatLink', 'orderCode', 'noteContent'];
+    const fields = ['noteContent', 'noteChatLink', 'noteOrderId', 'noteTitle'];
     fields.forEach(id => {
         const element = document.getElementById(id);
         if (element) element.value = '';
     });
     const tagSelect = document.getElementById('noteTagSelect');
-    if (tagSelect) tagSelect.value = '';
+    if (tagSelect) {
+        tagSelect.value = 'chua-xu-ly'; // Reset to default
+        // Show default fields
+        toggleNoteFields();
+    }
 }
 window.clearNoteForm = clearNoteForm;
 
 // Copy current chat link
 function copyCurrentChatLink() {
-    const chatLink = document.getElementById('chatLink')?.value.trim();
+    const chatLink = document.getElementById('noteChatLink')?.value.trim();
     if (!chatLink) {
         showNotification('Chưa có link để copy!', 'error');
         return;
@@ -182,19 +204,36 @@ function copyNoteChatLink(noteId) {
 window.copyNoteChatLink = copyNoteChatLink;
 
 // Complete note (delete with success message)
-function completeNote(noteId) {
+async function completeNote(noteId) {
     const note = window.appData.notes.find(n => n.id === noteId);
     if (!note) {
         showNotification('Không tìm thấy ghi chú!', 'error');
         return;
     }
-    note.status = 'done';
-    note.updatedAt = new Date().toISOString();
+    
+    // Mark as completed instead of deleting
+        note.status = 'đã hoàn thành';
+    note.completedAt = new Date().toISOString();
+    
+    // Update UI
     renderNotesList();
     renderNotesCategories();
     saveNotesToStorage();
-    try { syncNotesToGoogleSheets(); } catch {}
-    showNotification(`✅ Đã đánh dấu hoàn thành: ${note.orderCode} (đang đồng bộ)`, 'info');
+    
+    // Sync to Google Sheets
+    try {
+        const url = (window.GAS_URL || '') + '?token=' + encodeURIComponent(window.GAS_TOKEN || '');
+        const payload = { action: 'notesUpdate', notes: [note] };
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) {
+            showNotification(`✅ Đã hoàn thành: ${note.orderCode} (lỗi đồng bộ với Sheets)`, 'warning');
+        } else {
+            showNotification(`✅ Đã hoàn thành: ${note.orderCode}`, 'success');
+        }
+    } catch (e) {
+        showNotification(`✅ Đã hoàn thành: ${note.orderCode} (lỗi đồng bộ với Sheets)`, 'warning');
+    }
 }
 window.completeNote = completeNote;
 
@@ -211,8 +250,8 @@ async function deleteNote(noteId) {
         const payload = { action: 'notesDelete', ids: [deletedId] };
         const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json.success) console.warn('notesDelete response', res.status, json);
-    } catch (e) { console.warn('notesDelete failed', e); }
+        if (!res.ok || !json.success) { /* Handle error silently */ }
+    } catch (e) { /* Handle error silently */ }
     showNotification('Đã xóa ghi chú! (đang đồng bộ)', 'info');
 }
 window.deleteNote = deleteNote;
@@ -267,16 +306,64 @@ function renderNotesList() {
     const container = document.getElementById('notesList');
     const countElement = document.getElementById('notesCount');
     const activeCategory = window.__notesActiveCategory || 'all';
+    const masonry = document.querySelector('.notes-masonry');
     
     if (!container) return;
     
+    // Add filtering class to prevent animations
+    if (masonry) {
+        masonry.classList.add('filtering');
+    }
+    
+    // Show/hide bulk actions based on category
+    const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+    if (bulkActionsContainer) {
+        if (activeCategory === 'completed') {
+            bulkActionsContainer.style.display = 'block';
+        } else {
+            bulkActionsContainer.style.display = 'none';
+        }
+    }
+    
     let notes = window.appData.notes || [];
+    
     // Filter by active category if not 'all'
     if (activeCategory && activeCategory !== 'all') {
+        if (activeCategory === 'completed') {
+            // Show only completed notes
+            notes = notes.filter(n => n.status === 'completed' || n.status === 'đã hoàn thành');
+        } else {
+            // Show only active notes (not completed) for other categories
         notes = notes.filter(n => {
             const tags = String(n.tags || '').toLowerCase();
-            return tags === activeCategory;
+                return tags === activeCategory && n.status !== 'completed' && n.status !== 'đã hoàn thành';
+            });
+        }
+    } else {
+        // For 'all' category, show only active notes (not completed)
+        notes = notes.filter(n => n.status !== 'completed' && n.status !== 'đã hoàn thành');
+    }
+    
+    // Filter by search term
+    const searchTerm = window.__notesSearchTerm || '';
+    if (searchTerm) {
+        notes = notes.filter(note => {
+            const orderCode = String(note.orderCode || '').toLowerCase();
+            const chatLink = String(note.chatLink || '').toLowerCase();
+            const content = String(note.content || '').toLowerCase();
+            const title = String(note.title || '').toLowerCase();
+            
+            return orderCode.includes(searchTerm) || 
+                   chatLink.includes(searchTerm) || 
+                   content.includes(searchTerm) ||
+                   title.includes(searchTerm);
         });
+    }
+    
+    // Filter by time range
+    const timeFilter = window.__notesTimeFilter || 'all';
+    if (timeFilter !== 'all') {
+        notes = notes.filter(note => isNoteInTimeRange(note, timeFilter));
     }
     
     // Update count
@@ -296,27 +383,82 @@ function renderNotesList() {
     }
     
     const cards = notes.map(note => {
-        const statusText = (note.status || 'active') === 'done' ? 'Done' : 'Active';
+        const tags = String(note.tags || '').toLowerCase().trim();
+        const isInfoNote = tags === 'note-thong-tin';
+        const isPendingNote = tags === 'chua-xu-ly';
+        
+        // Determine note type label and class
+        let typeLabel = '';
+        let typeClass = '';
+        if (note.status === 'completed' || note.status === 'đã hoàn thành') {
+            typeLabel = 'Đã hoàn thành';
+            typeClass = 'note-completed';
+        } else if (isInfoNote) {
+            typeLabel = 'Note thông tin';
+            typeClass = 'note-info';
+        } else if (isPendingNote) {
+            typeLabel = 'Chưa xử lý';
+            typeClass = 'note-pending';
+        } else {
+            typeLabel = 'Active';
+            typeClass = 'active';
+        }
+        
+        let headerContent = '';
+        if (isInfoNote && note.title) {
+            // For "Note thông tin" - show title
+            headerContent = `<div class="v3-title">${String(note.title || '').replace(/\n/g,'<br>')}</div>`;
+        } else {
+            // For "Chưa xử lý" - show chat link
         const link = String(note.chatLink || '');
         const linkShort = link.length > 40 ? link.substring(0,40) + '…' : link;
         const linkTitle = linkShort || '—';
+            headerContent = `<a class="v3-link" href="${link}" target="_blank" title="Mở link chat">${linkTitle}</a>`;
+        }
+        
+        // Add checkbox for completed notes
+        const checkboxHtml = (note.status === 'completed' || note.status === 'đã hoàn thành') ? 
+            `<input type="checkbox" class="note-checkbox" data-note-id="${note.id}" onchange="updateBulkActions()">` : '';
+        
         return `
-        <div class="note-cardv3" id="note-${note.id}" data-note-id="${note.id}">
+        <div class="note-cardv3 ${typeClass}" id="note-${note.id}" data-note-id="${note.id}">
+            ${checkboxHtml}
             <div class="v3-head">
-                <a class="v3-link" href="${link}" target="_blank" title="Mở link chat">${linkTitle}</a>
-                <span class="v3-status ${statusText === 'Done' ? 'done' : 'active'}">${statusText}</span>
+                ${headerContent}
+                <span class="v3-status ${typeClass}">${typeLabel}</span>
             </div>
             <div class="v3-body">${String(note.content || '').replace(/\n/g,'<br>')}</div>
             <div class="v3-foot">
                 <span class="v3-time">${formatNoteDate(note.createdAt)}</span>
             </div>
             <div class="v3-actions">
-                <button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>
-                <button class="icon-btn ok" title="Hoàn thành" onclick="completeNote('${note.id}')">✅</button>
+                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : (isInfoNote ? '' : `<button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>`)}
+                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'delete' : 'ok'}" title="${isInfoNote ? 'Xóa note' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deleteNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🗑️' : '✅'}</button>`}
             </div>
         </div>`;
     }).join('');
-    container.innerHTML = `<div class="notes-masonry">${cards}</div>`;
+    
+    // Ensure we always have 2 columns by adding empty placeholder if needed
+    let masonryContent = cards;
+    if (cards.length % 2 === 1) {
+        masonryContent = cards + '<div class="note-placeholder"></div>';
+    }
+    
+    // Force re-render to ensure proper layout
+    container.innerHTML = '';
+    setTimeout(() => {
+        container.innerHTML = `<div class="notes-masonry">${masonryContent}</div>`;
+        setTimeout(() => {
+            applyMasonryLayout();
+            
+            // Remove filtering class after layout is applied
+            if (masonry) {
+                setTimeout(() => {
+                    masonry.classList.remove('filtering');
+                }, 50);
+            }
+        }, 100);
+    }, 10);
     
     // Add stagger animation to new notes
     setTimeout(() => {
@@ -353,7 +495,6 @@ function renderNotesCategories() {
         item('note-thong-tin','Note thông tin', base['note-thong-tin'])
     ].join('');
     el.innerHTML = html;
-    renderMiniSidebarCategories();
 }
 window.renderNotesCategories = renderNotesCategories;
 
@@ -362,119 +503,27 @@ window.filterNotesByCategory = function(category) {
     window.__notesActiveCategory = category || 'all';
     renderNotesCategories();
     renderNotesList();
-    // Ensure mini tabs reflect active state instantly
-    try { updateMiniTabsActive(); } catch {}
-}
-
-// Render into mini sidebar
-function renderMiniSidebarCategories() {
-    renderFixedNoteTabs();
-    renderMiniNotesActions();
-    ensureNotesModeSwitch();
-    try {
-        const app = document.querySelector('.app-container');
-        if (app) app.classList.add('with-notes-dock');
-    } catch {}
-}
-window.renderMiniSidebarCategories = renderMiniSidebarCategories;
-
-function renderFixedNoteTabs() {
-    const container = document.getElementById('notesMiniTabs');
-    if (!container) return;
-    const notes = getFilteredNotes();
-    const listItems = notes.map(n => {
-        const text = String(n.content || '').split('\n')[0].slice(0, 34);
-        const badge = (n.status||'active') === 'done' ? '✅' : '🕘';
-        return `<button class="mini-note-item" onclick="focusNote('${n.id}')">${badge} ${text || 'Ghi chú'}</button>`;
-    }).join('');
-    container.innerHTML = `
-        <div class="mini-notes-list">${listItems || '<div class=\"mini-empty\">Chưa có ghi chú</div>'}</div>
-    `;
-}
-
-// Render compact actions (Danh sách / Thêm) into mini dock
-function renderMiniNotesActions() {
-    // legacy no-op
-}
-
-// Integrated mode switch inside mini dock (replaces floating toggle)
-function ensureNotesModeSwitch() {
-    try {
-        const dock = document.getElementById('notesMiniSideDock');
-        if (!dock) return;
-        let holder = document.getElementById('notesModeSwitch');
-        if (!holder) {
-            holder = document.createElement('div');
-            holder.id = 'notesModeSwitch';
-            holder.className = 'notes-mode-switch';
-            const inner = dock.querySelector('.mini-dock-inner');
-            if (inner) inner.insertBefore(holder, inner.firstChild);
+    
+    // Update filter button states
+    const filterButtons = document.querySelectorAll('.notes-filters .chip');
+    filterButtons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.trim() === 'Tất cả' && category === 'all') {
+            btn.classList.add('active');
+        } else if (btn.textContent.trim() === 'Note thông tin' && category === 'note-thong-tin') {
+            btn.classList.add('active');
+        } else if (btn.textContent.trim() === 'Chưa xử lý' && category === 'chua-xu-ly') {
+            btn.classList.add('active');
+        } else if (btn.textContent.trim() === 'Hoàn thành' && category === 'completed') {
+            btn.classList.add('active');
         }
-        const listView = document.getElementById('notesListView');
-        const isList = !!(listView && listView.style.display !== 'none');
-        holder.innerHTML = `
-            <button id="dockNotesList" class="seg ${isList?'active':''}" onclick="switchNotesView('list')">Danh sách</button>
-            <button id="dockNotesAdd" class="seg ${!isList?'active':''}" onclick="switchNotesView('add')">Thêm note</button>
-        `;
-    } catch {}
+    });
 }
 
-// New inline controls rendering inside the Notes card header area
-function renderInlineNotesControls() {
-    try {
-        const container = document.getElementById('notes');
-        if (!container) return;
-        let toolbar = document.getElementById('notesInlineToolbar');
-        if (!toolbar) {
-            toolbar = document.createElement('div');
-            toolbar.id = 'notesInlineToolbar';
-            toolbar.className = 'notes-inline-toolbar';
-            // Insert at top of notes card content
-            const card = container.querySelector('.card .card-content');
-            const first = card ? card.firstElementChild : null;
-            if (card) card.insertBefore(toolbar, first);
-        }
-        const isList = (document.getElementById('notesListView')?.style.display || 'block') !== 'none';
-        const active = window.__notesActiveCategory || 'all';
-        toolbar.innerHTML = `
-            <div class="inline-left">
-                <div class="seg-group">
-                    <button class="seg ${isList?'active':''}" onclick="switchNotesView('list')">Danh sách</button>
-                    <button class="seg ${!isList?'active':''}" onclick="switchNotesView('add')">Thêm note</button>
-                </div>
-            </div>
-            <div class="inline-right ${isList?'':'hidden'}">
-                <div class="chips">
-                    <button class="chip ${active==='all'?'active':''}" onclick="filterNotesByCategory('all')">Tất cả</button>
-                    <button class="chip ${active==='note-thong-tin'?'active':''}" onclick="filterNotesByCategory('note-thong-tin')">Note thông tin</button>
-                    <button class="chip ${active==='chua-xu-ly'?'active':''}" onclick="filterNotesByCategory('chua-xu-ly')">Chưa xử lý</button>
-                </div>
-            </div>
-        `;
-    } catch {}
-}
 
-// Update active class on mini tabs without re-rendering DOM
-function updateMiniTabsActive() {
-    // Re-render mini notes list whenever category changes
-    renderFixedNoteTabs();
-}
 
-function getFilteredNotes() {
-    const activeCategory = window.__notesActiveCategory || 'all';
-    let notes = window.appData?.notes || [];
-    if (activeCategory && activeCategory !== 'all') {
-        notes = notes.filter(n => String(n.tags||'').toLowerCase() === activeCategory);
-    }
-    return notes;
-}
 
-window.focusNote = function(noteId) {
-    try {
-        const el = document.getElementById(`note-${noteId}`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch {}
-}
+
 
 // Settings modal handlers
 window.openTagsSettings = function() {
@@ -536,7 +585,6 @@ window.updateSavedTagColor = function(tag, hex) {
         window.__savedTagColors[tag] = hex;
         saveSavedTagColors();
         renderNotesCategories();
-        renderMiniSidebarCategories();
     } catch {}
 }
 
@@ -565,7 +613,7 @@ function saveNotesToStorage() {
         };
         localStorage.setItem('pdc_app_data', JSON.stringify(dataToSave));
     } catch (error) {
-        console.error('Error saving notes to localStorage:', error);
+        // Handle error silently
         showNotification('Lỗi lưu ghi chú!', 'error');
     }
 }
@@ -581,7 +629,7 @@ function loadNotesFromStorage() {
             }
         }
     } catch (error) {
-        console.error('Error loading notes from localStorage:', error);
+        // Handle error silently
         window.appData.notes = [];
     }
 }
@@ -594,6 +642,30 @@ function updateNotesTab() {
     try { refreshNotesFromSheets(); } catch {}
 }
 window.updateNotesTab = updateNotesTab;
+
+// Start automatic periodic sync
+function startPeriodicSync() {
+    if (_notesSyncInterval) {
+        clearInterval(_notesSyncInterval);
+    }
+    
+    // Sync every 30 seconds
+    _notesSyncInterval = setInterval(async () => {
+        try {
+            await refreshNotesFromSheets(true);
+        } catch (e) {
+            // Handle error silently
+        }
+    }, 30000);
+}
+
+// Stop periodic sync
+function stopPeriodicSync() {
+    if (_notesSyncInterval) {
+        clearInterval(_notesSyncInterval);
+        _notesSyncInterval = null;
+    }
+}
 
 // === Sync notes to Google Sheets using existing Apps Script endpoint ===
 async function syncNotesToGoogleSheets() {
@@ -609,35 +681,76 @@ async function syncNotesToGoogleSheets() {
             updatedAt: n.updatedAt || new Date().toISOString(),
             tags: n.tags || ''
         })) };
+        
+        // Show sync indicator
+        showSyncIndicator('Syncing...');
+        
         // Use text/plain to avoid CORS preflight like products
         const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
         const json = await res.json().catch(() => ({}));
+        
         if (!res.ok || !json.success) {
-            console.warn('notesUpsert failed', res.status, json);
+            // Handle error silently
+            _notesRetryCount++;
+            if (_notesRetryCount < MAX_RETRY_COUNT) {
+                showNotification(`Lưu ghi chú thất bại, thử lại lần ${_notesRetryCount}...`, 'warning');
+                setTimeout(() => syncNotesToGoogleSheets(), 2000 * _notesRetryCount);
+            } else {
             showNotification('Lưu ghi chú lên Sheet2 thất bại!', 'error');
+                _notesRetryCount = 0;
+            }
         } else {
             showNotification(`Đã đồng bộ ${payload.notes.length} ghi chú lên Sheet2`, 'success');
+            _notesRetryCount = 0;
         }
     } catch (e) {
-        console.error('syncNotesToGoogleSheets failed', e);
+        // Handle error silently
+        _notesRetryCount++;
+        if (_notesRetryCount < MAX_RETRY_COUNT) {
+            showNotification(`Lỗi mạng, thử lại lần ${_notesRetryCount}...`, 'warning');
+            setTimeout(() => syncNotesToGoogleSheets(), 2000 * _notesRetryCount);
+        } else {
         showNotification('Lỗi mạng khi đồng bộ ghi chú!', 'error');
+            _notesRetryCount = 0;
+        }
+    } finally {
+        hideSyncIndicator();
     }
 }
 
 // === Fetch notes from Google Sheets (Sheet2) and merge by updatedAt ===
 async function refreshNotesFromSheets(force = false) {
     try {
-        if (_notesSyncInFlight) return; // đang chạy
+        if (_notesSyncInFlight) return; // already running
         const now = Date.now();
-        if (!force && now - _lastNotesFetchAt < NOTES_FETCH_MIN_INTERVAL_MS) return; // quá gần
+        if (!force && now - _lastNotesFetchAt < NOTES_FETCH_MIN_INTERVAL_MS) return; // too recent
         _notesSyncInFlight = true; _lastNotesFetchAt = now;
+        
         const base = (window.GAS_URL || '');
         if (!base) return;
+        
+        // Show sync indicator for manual refreshes
+        if (force) {
+            showSyncIndicator('Loading from Sheet2...');
+        }
+        
         const url = base + '?action=notesList&token=' + encodeURIComponent(window.GAS_TOKEN || '');
         const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) {
+            if (force) {
+                showNotification('Không thể kết nối đến Sheet2', 'error');
+            }
+            return;
+        }
+        
         const data = await res.json();
-        if (!data || !data.success || !Array.isArray(data.data)) return;
+        if (!data || !data.success || !Array.isArray(data.data)) {
+            if (force) {
+                showNotification('Dữ liệu từ Sheet2 không hợp lệ', 'error');
+            }
+            return;
+        }
+        
         // Validate that payload is truly notes (not products)
         const incoming = (data.data || []).filter(n => {
             // must have id and at least one of orderCode/content/chatLink/status
@@ -647,6 +760,7 @@ async function refreshNotesFromSheets(force = false) {
             const looksLikeProduct = ('name' in n) && ('price' in n) && !hasNoteFields;
             return hasNoteFields && !looksLikeProduct;
         });
+        
         if (incoming.length === 0) {
             // Endpoint returned empty notes. If local notes look invalid (no orderCode & no content), clear them.
             const current = Array.isArray(window.appData.notes) ? window.appData.notes : [];
@@ -655,31 +769,50 @@ async function refreshNotesFromSheets(force = false) {
                 window.appData.notes = [];
                 renderNotesList();
                 saveNotesToStorage();
+                if (force) {
                 showNotification('Đã tải Sheet2: 0 ghi chú (đã dọn rác local)', 'info');
+                }
             }
             return;
         }
+        
         const current = Array.isArray(window.appData.notes) ? window.appData.notes : [];
         const idToNote = new Map(current.map(n => [n.id, n]));
+        let hasChanges = false;
+        
         incoming.forEach(n => {
             const existing = idToNote.get(n.id);
             if (!existing) {
                 idToNote.set(n.id, n);
+                hasChanges = true;
             } else {
                 const a = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
                 const b = new Date(n.updatedAt || n.createdAt || 0).getTime();
-                if (b > a) idToNote.set(n.id, n);
+                if (b > a) {
+                    idToNote.set(n.id, n);
+                    hasChanges = true;
+                }
             }
         });
+        
+        if (hasChanges) {
         window.appData.notes = Array.from(idToNote.values()).sort((x,y) => new Date(y.createdAt||0)-new Date(x.createdAt||0));
         renderNotesList();
         saveNotesToStorage();
+            if (force) {
         showNotification(`Đã tải từ Sheet2: ${incoming.length} ghi chú`, 'success');
+            }
+        }
     } catch (e) {
-        console.warn('refreshNotesFromSheets error', e);
+        // Handle error silently
+        if (force) {
         showNotification('Không tải được ghi chú từ Sheet2', 'error');
+        }
     } finally {
         _notesSyncInFlight = false;
+        if (force) {
+            hideSyncIndicator();
+        }
     }
 }
 
@@ -700,9 +833,421 @@ function normalizeNotes() {
     } catch {}
 }
 
+// Sync indicator functions
+function showSyncIndicator(message) {
+    try {
+        let indicator = document.getElementById('notesSyncIndicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'notesSyncIndicator';
+            indicator.className = 'sync-indicator';
+            indicator.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #3182ce;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: 600;
+                z-index: 10000;
+                box-shadow: 0 4px 12px rgba(49, 130, 206, 0.3);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            `;
+            document.body.appendChild(indicator);
+        }
+        indicator.innerHTML = `<span>🔄</span><span>${message}</span>`;
+        indicator.style.display = 'flex';
+    } catch (e) {
+        // Handle error silently
+    }
+}
+
+function hideSyncIndicator() {
+    try {
+        const indicator = document.getElementById('notesSyncIndicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+    } catch (e) {
+        // Handle error silently
+    }
+}
+
+// Clean up notes that no longer exist in Google Sheets
+async function cleanupDeletedNotes() {
+    try {
+        const base = (window.GAS_URL || '');
+        if (!base) return;
+        
+        const url = base + '?action=notesList&token=' + encodeURIComponent(window.GAS_TOKEN || '');
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) return;
+        
+        const data = await res.json();
+        if (!data || !data.success || !Array.isArray(data.data)) return;
+        
+        const sheetNoteIds = new Set(data.data.map(n => n.id));
+        const localNotes = window.appData.notes || [];
+        const notesToKeep = localNotes.filter(note => sheetNoteIds.has(note.id));
+        
+        if (notesToKeep.length !== localNotes.length) {
+            window.appData.notes = notesToKeep;
+            renderNotesList();
+            renderNotesCategories();
+            saveNotesToStorage();
+            showNotification(`Đã dọn dẹp ${localNotes.length - notesToKeep.length} ghi chú đã bị xóa`, 'info');
+        }
+    } catch (e) {
+        // Handle error silently
+    }
+}
+
 // Utilities to control from UI/Console if needed
-window.syncNotesNow = async function() { await refreshNotesFromSheets(); await syncNotesToGoogleSheets(); };
-window.clearNotesCache = function() { try { localStorage.removeItem('pdc_app_data'); showNotification('Đã xóa cache local, reload...', 'info'); setTimeout(() => location.reload(), 300); } catch {} };
+window.syncNotesNow = async function() { 
+    await refreshNotesFromSheets(true); 
+    await syncNotesToGoogleSheets(); 
+};
+window.clearNotesCache = function() { 
+    try { 
+        localStorage.removeItem('pdc_app_data'); 
+        showNotification('Đã xóa cache local, reload...', 'info'); 
+        setTimeout(() => location.reload(), 300); 
+    } catch {} 
+};
+window.cleanupNotes = cleanupDeletedNotes;
+
+// Toggle additional fields based on note tag selection
+function toggleNoteFields() {
+    const tagSelect = document.getElementById('noteTagSelect');
+    const additionalFields = document.getElementById('noteAdditionalFields');
+    const infoFields = document.getElementById('noteInfoFields');
+    
+    if (!tagSelect || !additionalFields || !infoFields) return;
+    
+    if (tagSelect.value === 'chua-xu-ly') {
+        additionalFields.style.display = 'block';
+        infoFields.style.display = 'none';
+        // Clear info fields when hiding
+        const title = document.getElementById('noteTitle');
+        if (title) title.value = '';
+    } else if (tagSelect.value === 'note-thong-tin') {
+        additionalFields.style.display = 'none';
+        infoFields.style.display = 'block';
+        // Clear additional fields when hiding
+        const chatLink = document.getElementById('noteChatLink');
+        const orderId = document.getElementById('noteOrderId');
+        if (chatLink) chatLink.value = '';
+        if (orderId) orderId.value = '';
+    } else {
+        additionalFields.style.display = 'none';
+        infoFields.style.display = 'none';
+        // Clear all fields when no selection
+        const chatLink = document.getElementById('noteChatLink');
+        const orderId = document.getElementById('noteOrderId');
+        const title = document.getElementById('noteTitle');
+        if (chatLink) chatLink.value = '';
+        if (orderId) orderId.value = '';
+        if (title) title.value = '';
+    }
+}
+
+// Initialize form on page load
+function initNoteForm() {
+    // Set default to "Chưa xử lý" and show fields
+    const tagSelect = document.getElementById('noteTagSelect');
+    if (tagSelect) {
+        tagSelect.value = 'chua-xu-ly';
+        toggleNoteFields();
+    }
+}
+
+window.toggleNoteFields = toggleNoteFields;
+window.initNoteForm = initNoteForm;
+window.startNotesSync = startPeriodicSync;
+window.stopNotesSync = stopPeriodicSync;
+
+// Search notes functionality
+function searchNotes() {
+    const searchInput = document.getElementById('notesSearchInput');
+    if (!searchInput) return;
+    
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    window.__notesSearchTerm = searchTerm;
+    
+    // Re-render notes list with search filter
+    renderNotesList();
+}
+
+function clearNotesSearch() {
+    const searchInput = document.getElementById('notesSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+        window.__notesSearchTerm = '';
+        renderNotesList();
+    }
+}
+
+window.searchNotes = searchNotes;
+window.clearNotesSearch = clearNotesSearch;
+
+// Time filtering functions
+function filterNotesByTime(timeFilter) {
+    // Update active state
+    document.querySelectorAll('.notes-time-filters .chip').forEach(chip => {
+        chip.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Store time filter
+    window.__notesTimeFilter = timeFilter;
+    
+    // Re-render notes list
+    renderNotesList();
+}
+
+function isNoteInTimeRange(note, timeFilter) {
+    if (timeFilter === 'all') return true;
+    
+    const noteDate = new Date(note.createdAt);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(today);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+    
+    switch (timeFilter) {
+        case 'today':
+            return noteDate >= today;
+        case 'yesterday':
+            return noteDate >= yesterday && noteDate < today;
+        case 'week':
+            return noteDate >= weekAgo;
+        case 'month':
+            return noteDate >= monthAgo;
+        default:
+            return true;
+    }
+}
+
+window.filterNotesByTime = filterNotesByTime;
+
+// Delete note function
+function deleteNote(noteId) {
+    // Store note ID for confirmation
+    window.__deleteNoteId = noteId;
+    
+    // Show modal
+    const modal = document.getElementById('deleteNoteModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+// Confirm delete note
+function confirmDeleteNote() {
+    const noteId = window.__deleteNoteId;
+    if (!noteId) return;
+    
+    try {
+        // Remove from local data
+        window.appData.notes = window.appData.notes.filter(note => note.id !== noteId);
+        
+        // Update UI
+        renderNotesList();
+        renderNotesCategories();
+        saveNotesToStorage();
+        
+        // Sync to Google Sheets
+        try {
+            syncNotesToGoogleSheets();
+        } catch (e) {
+            // Handle error silently
+        }
+        
+        showNotification('Đã xóa note!', 'success');
+        
+        // Close modal
+        closeDeleteModal();
+    } catch (error) {
+        // Handle error silently
+        showNotification('Lỗi khi xóa note!', 'error');
+    }
+}
+
+// Close delete modal
+function closeDeleteModal() {
+    const modal = document.getElementById('deleteNoteModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    window.__deleteNoteId = null;
+}
+
+window.deleteNote = deleteNote;
+window.closeDeleteModal = closeDeleteModal;
+window.confirmDeleteNote = confirmDeleteNote;
+
+// Bulk actions for completed notes
+function toggleSelectAllCompleted() {
+    const selectAllCheckbox = document.getElementById('selectAllCompleted');
+    const noteCheckboxes = document.querySelectorAll('.note-checkbox');
+    
+    noteCheckboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkActions();
+}
+
+function updateBulkActions() {
+    const noteCheckboxes = document.querySelectorAll('.note-checkbox');
+    const checkedBoxes = document.querySelectorAll('.note-checkbox:checked');
+    const deleteBtn = document.getElementById('deleteSelectedBtn');
+    const selectAllCheckbox = document.getElementById('selectAllCompleted');
+    
+    if (deleteBtn) {
+        deleteBtn.disabled = checkedBoxes.length === 0;
+    }
+    
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = noteCheckboxes.length > 0 && checkedBoxes.length === noteCheckboxes.length;
+        selectAllCheckbox.indeterminate = checkedBoxes.length > 0 && checkedBoxes.length < noteCheckboxes.length;
+    }
+}
+
+async function deleteSelectedCompleted() {
+    const checkedBoxes = document.querySelectorAll('.note-checkbox:checked');
+    if (checkedBoxes.length === 0) return;
+    
+    if (!confirm(`Bạn có chắc muốn xóa ${checkedBoxes.length} ghi chú đã chọn?`)) return;
+    
+    try {
+        const noteIds = Array.from(checkedBoxes).map(checkbox => checkbox.dataset.noteId);
+        
+        // Remove from local data
+        window.appData.notes = window.appData.notes.filter(note => !noteIds.includes(note.id));
+        
+        // Update UI
+        renderNotesList();
+        renderNotesCategories();
+        saveNotesToStorage();
+        
+        // Sync to Google Sheets
+        try {
+            const url = (window.GAS_URL || '') + '?token=' + encodeURIComponent(window.GAS_TOKEN || '');
+            const payload = { action: 'notesDelete', ids: noteIds };
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || !json.success) {
+                // Handle error silently
+            }
+        } catch (e) {
+            // Handle error silently
+        }
+        
+        showNotification(`Đã xóa ${noteIds.length} ghi chú!`, 'success');
+    } catch (error) {
+        // Handle error silently
+        showNotification('Lỗi khi xóa ghi chú!', 'error');
+    }
+}
+
+window.toggleSelectAllCompleted = toggleSelectAllCompleted;
+window.updateBulkActions = updateBulkActions;
+window.deleteSelectedCompleted = deleteSelectedCompleted;
+
+// Modern Notification System
+function showNotification(message, type = 'info', title = '') {
+    const container = document.getElementById('notificationContainer');
+    if (!container) return;
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    
+    const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: 'ℹ️'
+    };
+    
+    const titles = {
+        success: 'Thành công',
+        error: 'Lỗi',
+        warning: 'Cảnh báo',
+        info: 'Thông báo'
+    };
+    
+    notification.innerHTML = `
+        <div class="notification-content">
+            <div class="notification-icon">${icons[type] || icons.info}</div>
+            <div class="notification-body">
+                <div class="notification-title">${title || titles[type] || titles.info}</div>
+                <div class="notification-message">${message}</div>
+            </div>
+        </div>
+        <button class="notification-close" onclick="removeNotification(this)">×</button>
+    `;
+    
+    container.appendChild(notification);
+    
+    // Trigger animation
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        removeNotification(notification.querySelector('.notification-close'));
+    }, 5000);
+}
+
+function removeNotification(closeBtn) {
+    const notification = closeBtn.closest('.notification');
+    if (!notification) return;
+    
+    notification.classList.add('removing');
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 300);
+}
+
+window.showNotification = showNotification;
+window.removeNotification = removeNotification;
+
+// Functions are already exported above, removing duplicate exports
+
+// Add event listener for modal overlay click
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('deleteNoteModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeDeleteModal();
+            }
+        });
+    }
+});
+
+// Apply smart masonry layout
+function applyMasonryLayout() {
+    const masonry = document.querySelector('.notes-masonry');
+    if (!masonry) return;
+    
+    // CSS columns will handle the layout automatically
+    // No need to rearrange cards
+}
+
+window.applyMasonryLayout = applyMasonryLayout;
 
 function scheduleRefreshNotes(delayMs) {
     setTimeout(() => { refreshNotesFromSheets(true); }, Math.max(0, delayMs || 0));

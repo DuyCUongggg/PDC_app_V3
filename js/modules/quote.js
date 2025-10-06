@@ -5,13 +5,12 @@ let selectedQuoteProducts = []; // Array để lưu nhiều sản phẩm
 
 // Update quote tab state based on available products
 function updateQuoteTab() {
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('updateQuoteTab called, products:', appData.products?.length || 0);
     
     const emptyState = document.getElementById('quoteEmptyState');
     const quoteForm = document.querySelector('.quote-form');
     
     if (!emptyState || !quoteForm) {
-        console.error('Quote elements not found');
+        // Handle error silently
         return;
     }
     
@@ -20,11 +19,9 @@ function updateQuoteTab() {
     if (hasProducts) {
         emptyState.style.display = 'none';
         quoteForm.style.display = 'block';
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Quote form shown');
     } else {
         emptyState.style.display = 'block';
         quoteForm.style.display = 'none';
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Quote empty state shown');
     }
     
     // Reset form state
@@ -136,7 +133,6 @@ function selectQuoteProduct(productId) {
     showNotification('Đã chọn sản phẩm: ' + product.name);
 }
 
-// Function removed - no longer needed for multi-product approach
 
 // Calculate quote
 function calculateQuote() {
@@ -151,17 +147,13 @@ function calculateQuote() {
         totalOriginalPrice += item.product.price * item.quantity;
     });
     
-    // Kiểm tra điều kiện tối thiểu: phải >= 200k mới được tính báo giá
     if (totalOriginalPrice < 200000) {
-        // Xóa các thông báo cũ trước
         const existingToasts = document.querySelectorAll('.toast-notification');
         existingToasts.forEach(toast => toast.remove());
         
-        // Chỉ dùng 1 cách hiển thị thông báo
         if (typeof createToast === 'function') {
             createToast(`Tổng giá trị đơn hàng phải từ 200k trở lên! Hiện tại: ${formatPrice(totalOriginalPrice)}đ`, 'error', 5000);
         } else {
-            // Fallback: tạo toast thủ công
             const toast = document.createElement('div');
             toast.className = 'toast-notification toast-error';
             toast.textContent = `Tổng giá trị đơn hàng phải từ 200k trở lên! Hiện tại: ${formatPrice(totalOriginalPrice)}đ`;
@@ -784,7 +776,7 @@ function copyQuoteNumber(btn) {
             showNotification(`Đã copy ${label ? label + ': ' : ''}${val}`);
         });
     } catch (e) {
-        console.error(e);
+        // Handle error silently
         showNotification('Không copy được!', 'error');
     }
 }

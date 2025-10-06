@@ -1,30 +1,17 @@
 ﻿
 (function() {
     'use strict';
-    // ===== DEBUG CONTROL (silence console logs in production) =====
-    const __PDC_DEBUG__ = false; // set true to enable verbose logs
-    (function setupConsoleSilencer() {
-        try {
-            window.__PDC_DEBUG__ = __PDC_DEBUG__;
-            if (!__PDC_DEBUG__) {
-                ['log', 'debug', 'info'].forEach(k => {
-                    const original = console[k];
-                    console[k] = function noop() { /* silenced */ };
-                    console[k].__original = original;
-                });
-            }
-        } catch {}
-    })();
+    // ===== DEBUG CONTROL =====
+    const __PDC_DEBUG__ = false;
     
     // Global variables
     let selectedComboProducts = [];
-    let selectedComboRefundProduct = null; // Single combo product for refund
+    let selectedComboRefundProduct = null;
     let globalSearchSelectedIndex = -1;
-    let currentSearchContext = null; // 'quote', 'admin', etc.
+    let currentSearchContext = null;
 
     // ===== DROPDOWN MENU HANDLING =====
     function initDropdowns() {
-        // Handle file menu dropdown
         const fileMenuBtn = document.getElementById('fileMenuBtn');
         const fileMenu = document.getElementById('fileMenu');
         
@@ -33,12 +20,10 @@
                 e.stopPropagation();
                 const isOpen = fileMenu.classList.contains('show');
                 
-                // Close all other dropdowns
                 document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
                     menu.classList.remove('show');
                 });
                 
-                // Toggle current dropdown
                 if (!isOpen) {
                     fileMenu.classList.add('show');
                     fileMenuBtn.setAttribute('aria-expanded', 'true');
@@ -48,7 +33,6 @@
                 }
             });
             
-            // Close dropdown when clicking outside
             document.addEventListener('click', (e) => {
                 if (!fileMenuBtn.contains(e.target) && !fileMenu.contains(e.target)) {
                     fileMenu.classList.remove('show');
@@ -61,10 +45,8 @@
     // ===== CORE =====
     window.appData = { metadata: { lastUpdated: new Date().toISOString() }, products: [], categories: ["AI", "Công cụ"] };
 
-    // helpers
     function formatPrice(n) { return new Intl.NumberFormat('en-US').format(Number(n) || 0); }
     function parsePrice(v) {
-        // Accept both numbers and strings; never throw, return 0 on invalid
         if (typeof v === 'number') {
             return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
         }
@@ -79,7 +61,6 @@
         return `${day}/${month}/${year}`;
     }
     
-    // Export utilities to global scope
     window.formatPrice = formatPrice;
     window.parsePrice = parsePrice;
     window.formatDMY = formatDMY;
@@ -87,13 +68,10 @@
     function bindPriceInput(el) { 
         if (!el) return; 
         el.addEventListener('input', e => {
-            // Chỉ cho phép số và xóa dấu chấm khi đang gõ
             e.target.value = e.target.value.replace(/[^\d]/g, '');
         });
         el.addEventListener('blur', e => {
-            // Format số khi rời khỏi ô input (không ném lỗi)
             const r = parsePrice(e.target.value);
-            // Với input type=number, KHÔNG chèn dấu phẩy vì trình duyệt không chấp nhận
             const isNumberType = (e.target.getAttribute('type') || '').toLowerCase() === 'number';
             e.target.value = r ? (isNumberType ? String(r) : formatPrice(r)) : "";
         });
@@ -248,7 +226,6 @@
         // Update page title and subtitle
         const titles = {
             'admin': { title: 'Quản lý sản phẩm', subtitle: 'Thêm, chỉnh sửa và quản lý các gói sản phẩm' },
-            'templates': { title: 'Tạo Template', subtitle: 'Tạo nội dung template cho khách hàng' },
             'refund': { title: 'Tính hoàn tiền', subtitle: 'Tính toán số tiền hoàn lại cho khách hàng' },
             'upgrade': { title: 'Đổi gói sản phẩm', subtitle: 'Tính toán số tiền bù khi khách hàng đổi sang gói khác' },
             'schedule': { title: 'Lịch làm việc', subtitle: 'Quản lý lịch làm việc của team 4 người' },
@@ -285,7 +262,6 @@
             const response = await fetch(`${GOOGLE_APPS_SCRIPT_URL}`);
             const result = await response.json();
             
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Google Sheets response:', result);
             
             if (result.success && Array.isArray(result.data)) {
                 // Convert Google Sheets data to app format
@@ -331,12 +307,11 @@
                             if (typeof comboData === 'string' && comboData.trim()) {
                                 // Split by comma and clean up IDs
                                 product.comboProducts = comboData.split(',').map(id => id.trim()).filter(id => id);
-                    if (__PDC_DEBUG__ && console.log.__original) console.log.__original(`Loaded combo ${item.name} with products:`, product.comboProducts);
                             } else if (Array.isArray(comboData)) {
                                 product.comboProducts = comboData;
                             }
                         } catch (e) {
-                            console.warn('Failed to parse combo products for', item.name, e);
+                            // Handle error silently
                         }
                     }
                     
@@ -348,12 +323,7 @@
                 sanitizeProducts();
                 appData.metadata.lastUpdated = new Date().toISOString();
                 
-                // Debug: Log loaded products
-                if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Loaded products from Google Sheets:', products);
                 const combos = products.filter(p => p.category === 'Combo');
-                if (combos.length > 0) {
-                    if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Found combo products:', combos);
-                }
                 
                 renderProductList();
                 updateHeaderStats();
@@ -361,19 +331,16 @@
                 if (typeof refreshRefundState === 'function') refreshRefundState();
                 showNotification(`Đã tải ${products.length} sản phẩm từ Google Sheets!`);
             } else {
-                console.error('Invalid Google Sheets response:', result);
                 throw new Error(result.message || result.error || 'Không thể tải dữ liệu');
             }
             
         } catch (error) {
-            console.error('Error loading from Google Sheets:', error);
             showNotification('Lỗi: ' + error.message, 'error');
         }
     }
 
     // Save data to Google Sheets via Apps Script API
     async function saveToGoogleSheets() {
-        if (__PDC_DEBUG__ && console.log.__original) console.log.__original('saveToGoogleSheets called!');
         try {
             showNotification('Đang lưu dữ liệu vào Google Sheets...', 'info');
             
@@ -393,9 +360,6 @@
                        product.comboProducts.join(',') : ''    // Column I = comboProducts
                 };
                 
-                if (product.category === 'Combo' && product.comboProducts && product.comboProducts.length > 0) {
-                    if (__PDC_DEBUG__ && console.log.__original) console.log.__original(`Saving combo ${product.name} with comboProducts: ${sheetProduct.I}`);
-                }
                 
                 return sheetProduct;
             });
@@ -403,7 +367,6 @@
             // Also save combo data to local JSON as backup
             saveComboDataToLocal();
             
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Sending to Google Sheets:', products);
             
             // POST with text/plain to avoid preflight; token in query
             const url = `${GOOGLE_APPS_SCRIPT_URL}?token=${encodeURIComponent(GOOGLE_SHEET_TOKEN)}`;
@@ -419,7 +382,6 @@
             }
             
             const result = await response.json();
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Google Sheets save response:', result);
             
             if (result.success) {
                 appData.metadata.lastUpdated = new Date().toISOString();
@@ -430,7 +392,6 @@
             }
             
         } catch (error) {
-            console.error('Error saving to Google Sheets:', error);
             showNotification('Lỗi: ' + error.message, 'error');
         }
     }
@@ -440,8 +401,6 @@
         if (!Array.isArray(ids) || ids.length === 0) return;
         try {
             // ✅ ENABLED: Apps Script V2 confirmed working!
-            // console.warn('Google Sheets delete temporarily disabled - Apps Script V2 not deployed yet');
-            // showNotification('Đã xóa locally. Apps Script V2 chưa deploy thành công!', 'warning');
             // return;
             
             const url = `${GOOGLE_APPS_SCRIPT_URL}?token=${encodeURIComponent(GOOGLE_SHEET_TOKEN)}`;
@@ -456,7 +415,6 @@
             if (!result.success) throw new Error(result.message || result.error || 'Không thể xóa trên Google Sheets');
             showNotification('Đã xóa trên Google Sheets!');
         } catch (err) {
-            console.error('Error deleting on Google Sheets:', err);
             showNotification('Lỗi xóa trên Google Sheets: ' + err.message, 'error');
         }
     }
@@ -480,11 +438,6 @@
     window.loadFromGoogleSheets = loadFromGoogleSheets; 
     window.saveToGoogleSheets = saveToGoogleSheets;
 
-    // Debug: Test if functions are loaded
-    if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Google Sheets functions loaded:', {
-        loadFromGoogleSheets: typeof loadFromGoogleSheets,
-        saveToGoogleSheets: typeof saveToGoogleSheets
-    });
 
     // admin list
     function getFilters() { return { q: (document.getElementById('adminSearch')?.value || '').toLowerCase(), cat: (document.getElementById('categoryFilter')?.value || '') }; }
@@ -614,12 +567,11 @@
             }
             
             product.comboProducts = selectedAIProducts.map(p => p.id);
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Combo product created with comboProducts:', product.comboProducts);
         }
         
         appData.products.push(product);
         appData.metadata.lastUpdated = new Date().toISOString();
-        // Immediate sync for other tabs (refund/upgrade/templates)
+        // Immediate sync for other tabs (refund/upgrade)
         try { window.products = appData.products.slice(); } catch {}
         ['productName', 'productDuration', 'productPrice'].forEach(id => document.getElementById(id).value = '');
         
@@ -1145,7 +1097,7 @@
                 if (parsed.metadata) appData.metadata = parsed.metadata;
             }
         } catch (e) {
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('No saved data found or error loading:', e);
+            // Handle error silently
         }
         
         bindPriceInput(document.getElementById('productPrice'));
@@ -1198,7 +1150,7 @@
             try {
                 updateRefundTab();
             } catch (e) {
-                console.error('Error calling updateRefundTab:', e);
+                // Handle error silently
             }
         } else {
             // Try again after a short delay
@@ -1207,7 +1159,7 @@
                     try {
                         updateRefundTab();
                     } catch (e) {
-                        console.error('Error calling updateRefundTab (delayed):', e);
+                        // Handle error silently
                     }
                 }
             }, 100);
@@ -1379,20 +1331,15 @@
     // ===== COMBO REFUND FUNCTIONS =====
     function initComboRefund() {
         // Will be initialized when a combo product is selected
-        if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Combo refund system initialized');
     }
     
     function showComboRefundOptions(comboProduct) {
-        if (__PDC_DEBUG__ && console.log.__original) console.log.__original('showComboRefundOptions called with:', comboProduct);
         selectedComboRefundProduct = comboProduct;
         const comboSection = document.getElementById('comboRefundSection');
         const comboList = document.getElementById('comboProductsList');
         
-        if (__PDC_DEBUG__ && console.log.__original) console.log.__original('DOM elements:', { comboSection: !!comboSection, comboList: !!comboList });
-        if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Combo products:', comboProduct.comboProducts);
         
         if (!comboSection || !comboList || !comboProduct.comboProducts) {
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Missing elements or combo products');
             return;
         }
         
@@ -1479,7 +1426,7 @@
             updateRefundCalculation();
             showNotification('Đã bỏ chọn tất cả sản phẩm trong combo', 'success');
         } catch (e) {
-            console.error('clearComboRefundSelection error', e);
+            // Handle error silently
         }
     }
 
@@ -1606,9 +1553,8 @@
                 lastUpdated: new Date().toISOString()
             };
             localStorage.setItem('pdc_combo_data', JSON.stringify(comboData));
-            if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Combo data saved to localStorage as backup');
         } catch (e) {
-            console.warn('Failed to save combo data to localStorage:', e);
+            // Handle error silently
         }
     }
     
@@ -1617,11 +1563,10 @@
             const saved = localStorage.getItem('pdc_combo_data');
             if (saved) {
                 const comboData = JSON.parse(saved);
-                if (__PDC_DEBUG__ && console.log.__original) console.log.__original('Loaded combo data from localStorage:', comboData);
                 return comboData.combos || [];
             }
         } catch (e) {
-            console.warn('Failed to load combo data from localStorage:', e);
+            // Handle error silently
         }
         return [];
     }
@@ -1654,7 +1599,7 @@
                 startDate.placeholder = 'dd/mm/yyyy';
             }
         } catch (e) {
-            console.error('initRefundForm error:', e);
+            // Handle error silently
         }
     }
     

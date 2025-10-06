@@ -17,13 +17,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Wait a bit for config to load, then update logo
     setTimeout(() => {
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Updating logo from config...', window.APP_CONFIG);
         
         // Update logo with current config (if config is loaded)
         const logoImg = document.querySelector('.logo-img');
         if (logoImg && window.APP_CONFIG) {
             const newSrc = window.APP_CONFIG.LOGO.URL_WITH_VERSION;
-            if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Updating logo src from', logoImg.src, 'to', newSrc);
             logoImg.src = newSrc;
             logoImg.width = window.APP_CONFIG.LOGO.WIDTH;
             logoImg.height = window.APP_CONFIG.LOGO.HEIGHT;
@@ -35,7 +33,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (window.APP_CONFIG) {
             faviconLinks.forEach(link => {
                 const newHref = window.APP_CONFIG.LOGO.URL_WITH_VERSION;
-                if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Updating favicon from', link.href, 'to', newHref);
                 link.href = newHref;
             });
         }
@@ -50,10 +47,9 @@ window.APP_VERSION = APP_VERSION;
 
 // Force update logo function
 window.forceUpdateLogo = function() {
-    if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Force updating logo...', window.APP_CONFIG);
     
     if (!window.APP_CONFIG) {
-        console.error('APP_CONFIG not loaded yet!');
+        // Handle error silently
         return;
     }
     
@@ -61,7 +57,6 @@ window.forceUpdateLogo = function() {
     const logoImg = document.querySelector('.logo-img');
     if (logoImg) {
         const newSrc = window.APP_CONFIG.LOGO.URL_WITH_VERSION;
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Forcing logo update from', logoImg.src, 'to', newSrc);
         logoImg.src = newSrc;
         logoImg.width = window.APP_CONFIG.LOGO.WIDTH;
         logoImg.height = window.APP_CONFIG.LOGO.HEIGHT;
@@ -72,7 +67,6 @@ window.forceUpdateLogo = function() {
     const faviconLinks = document.querySelectorAll('link[rel*="icon"]');
     faviconLinks.forEach(link => {
         const newHref = window.APP_CONFIG.LOGO.URL_WITH_VERSION;
-        if (window.__PDC_DEBUG__ && console.log.__original) console.log.__original('Forcing favicon update from', link.href, 'to', newHref);
         link.href = newHref;
     });
 };

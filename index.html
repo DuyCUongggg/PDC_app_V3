@@ -89,10 +89,6 @@
                 
                 <div class="nav-section">
                     <h3 class="nav-section-title">Tạo nội dung</h3>
-                    <button class="nav-item" onclick="switchTab('templates'); handleNavClick()" data-tab="templates">
-                        <span class="nav-icon">📝</span>
-                        <span class="nav-label">Templates</span>
-                    </button>
                     <button class="nav-item" onclick="switchTab('refund'); handleNavClick()" data-tab="refund">
                         <span class="nav-icon">💰</span>
                         <span class="nav-label">Hoàn tiền</span>
@@ -136,13 +132,6 @@
             </div>
         </aside>
         
-        <!-- Mini Notes Sidebar next to main sidebar (only visible on Notes tab) -->
-        <aside id="notesMiniSideDock" class="notes-mini-dock" style="display:none;">
-            <div class="mini-dock-inner">
-                <div class="mini-sidebar-header">Phân loại</div>
-                <div id="notesMiniTabs" class="notes-tabs"></div>
-            </div>
-        </aside>
 
         
 
@@ -327,63 +316,6 @@
                     </div>
                 </section>
 
-                <!-- TEMPLATES SECTION -->
-            <section id="templates" class="tab-content">
-                    <div class="card template-card">
-                        <div class="card-header">
-                            <h3 class="card-title">
-                                <span class="title-icon">📝</span>
-                                Tạo Template
-                            </h3>
-                            <p class="card-subtitle">Tạo nội dung template cho khách hàng</p>
-                    </div>
-
-                        <div class="card-content">
-                            <div id="templateEmptyState" class="empty-state">
-                                <div class="empty-icon">📝</div>
-                                <h4>Chưa có sản phẩm</h4>
-                                <p>Vui lòng thêm sản phẩm trước khi tạo template</p>
-                            </div>
-
-                            <div class="template-form">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label class="form-label">Chọn sản phẩm</label>
-                        <div class="search-container">
-                                            <input id="templateProductSearch" class="form-input" type="text" placeholder="Tìm kiếm sản phẩm..." />
-                            <div id="templateSearchResults" class="search-results"></div>
-                                        </div>
-                        </div>
-
-                                    <div class="form-group">
-                                        <label class="form-label">Tên khách hàng (tùy chọn)</label>
-                                        <input id="customerName" class="form-input" type="text" placeholder="VD: Anh Hiếu" />
-                                    </div>
-                        </div>
-
-                                <div class="form-actions">
-                                    <button id="generateBtn" class="btn btn-primary btn-large" disabled onclick="generateTemplate()">
-                                        <span class="btn-icon">✨</span>
-                                        Tạo Template
-                                    </button>
-                        </div>
-                    </div>
-
-                            <div id="templateResult" class="template-result" style="display:none;">
-                                <div class="result-header">
-                                    <h4>Kết quả Template</h4>
-                                    <button class="btn btn-outline" onclick="copyTemplate()">
-                                        <span class="btn-icon">📋</span>
-                                        Copy
-                                    </button>
-                                </div>
-                                <div class="result-content">
-                                    <pre id="templateContent" class="template-code"></pre>
-                                </div>
-                            </div>
-                    </div>
-                </div>
-            </section>
 
                 <!-- REFUND SECTION -->
             <section id="refund" class="tab-content">
@@ -437,10 +369,6 @@
                                         <button type="button" class="btn btn-primary" onclick="extractRefundOrderInfo()">🔍 Trích xuất</button>
                                         <button type="button" class="btn btn-outline" onclick="clearRefundOrderInfo()">🗑️ Xóa</button>
                                     </div>
-                                    <div id="refundOrderExtractResult" style="margin-top:12px; display:none;">
-                                        <div><strong>Mã đơn hàng:</strong> <span id="extractedOrderIdMini">-</span></div>
-                                        <div><strong>Ngày mua:</strong> <span id="extractedPurchaseDateMini">-</span></div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -454,24 +382,57 @@
                                     <h2>Bước 3 · Khoảng thời gian</h2>
                                 </div>
                                 
-                                <div class="refund-date-range">
-                                    <div class="refund-date-group">
-                                        <label class="refund-date-label">Từ ngày mua gói</label>
-                                        <div class="refund-date-input-wrapper">
-                                            <input type="date" class="refund-date-input" id="startDate">
-                                            <button type="button" class="refund-today-btn-small" onclick="setToday('startDate')" title="Hôm nay">📌</button>
+                                <!-- Date range container with 2 colored frames -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                                    <!-- Option 1: Từ ngày mua → Đến ngày hoàn (Blue frame) -->
+                                    <div class="refund-date-frame refund-frame-blue">
+                                        <div class="refund-frame-header">
+                                            <h4>1. Từ ngày mua → Đến ngày hoàn</h4>
+                                        </div>
+                                        <div class="refund-frame-content">
+                                            <div class="refund-date-group">
+                                                <label class="refund-date-label">Từ ngày mua gói</label>
+                                                <div class="refund-input-with-btn">
+                                                    <input type="date" class="refund-date-input" id="purchaseStartDate">
+                                                    <button type="button" class="refund-today-btn" onclick="setToday('purchaseStartDate')" title="Hôm nay">📅</button>
+                                                </div>
+                                            </div>
+                                            <div class="refund-date-group">
+                                                <label class="refund-date-label">Đến ngày hoàn</label>
+                                                <div class="refund-input-with-btn">
+                                                    <input type="date" class="refund-date-input" id="purchaseEndDate">
+                                                    <button type="button" class="refund-today-btn" onclick="setToday('purchaseEndDate')" title="Hôm nay">📅</button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="refund-date-group">
-                                        <label class="refund-date-label">Đến ngày hoàn</label>
-                                        <div class="refund-date-input-wrapper">
-                                            <input type="date" class="refund-date-input" id="endDate">
-                                            <button type="button" class="refund-today-btn-small" onclick="setToday('endDate')" title="Hôm nay">📌</button>
+                                    
+                                    <!-- Option 2: Từ ngày hoàn → Đến ngày hết gói (Green frame) -->
+                                    <div class="refund-date-frame refund-frame-green">
+                                        <div class="refund-frame-header">
+                                            <h4>2. Từ ngày hoàn → Đến ngày hết gói</h4>
+                                        </div>
+                                        <div class="refund-frame-content">
+                                            <div class="refund-date-group">
+                                                <label class="refund-date-label">Từ ngày hoàn</label>
+                                                <div class="refund-input-with-btn">
+                                                    <input type="date" class="refund-date-input" id="refundStartDate">
+                                                    <button type="button" class="refund-today-btn" onclick="setToday('refundStartDate')" title="Hôm nay">📅</button>
+                                                </div>
+                                            </div>
+                                            <div class="refund-date-group">
+                                                <label class="refund-date-label">Đến ngày hết gói</label>
+                                                <div class="refund-input-with-btn">
+                                                    <input type="date" class="refund-date-input" id="refundEndDate">
+                                                    <button type="button" class="refund-today-btn" onclick="setToday('refundEndDate')" title="Hôm nay">📅</button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-                                    <button type="button" class="btn btn-outline" onclick="clearRefundDates()">🗑️ Xóa ngày</button>
+                                
+                                <div style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-outline" onclick="clearAllRefundDates()">🗑️ Xóa tất cả ngày</button>
                                 </div>
                             </div>
 
@@ -500,6 +461,7 @@
                                         </div>
                                     </div>
                                 </div>
+                                
                                 
                                 <div id="refundEmptySelected" class="refund-empty-state">
                                     <p>Chưa chọn sản phẩm nào</p>
@@ -538,10 +500,6 @@
                                 <div class="refund-right-column">
                                     <div class="refund-right-header">
                                         <h3>📋 Nội dung gửi khách</h3>
-                                        <button class="btn btn-outline btn-sm" onclick="openTemplateSettings()">
-                                            <span class="btn-icon">⚙️</span>
-                                            Cài đặt mẫu
-                                        </button>
                                     </div>
                                     
                                     <textarea id="refundCustomerMessageEditor" class="refund-message-textarea" placeholder="Tin nhắn sẽ được tạo tự động..."></textarea>
@@ -861,6 +819,16 @@
                                 <button id="notesListBtn" class="btn btn-outline active" onclick="switchNotesView('list')">Danh sách</button>
                                 <button id="notesAddBtn" class="btn btn-outline" onclick="switchNotesView('add')">Thêm ghi chú</button>
                             </div>
+                            <div class="notes-sync-controls">
+                                <button class="btn btn-outline btn-sm" onclick="syncNotesNow()" title="Đồng bộ với database">
+                                    <span class="btn-icon">🔄</span>
+                                    Đồng bộ
+                                </button>
+                                <button class="btn btn-outline btn-sm" onclick="cleanupNotes()" title="Dọn dẹp ghi chú đã xóa">
+                                    <span class="btn-icon">🧹</span>
+                                    Dọn dẹp
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="card-content">
@@ -869,30 +837,41 @@
                             <div id="notesAddView" class="note-form" style="display:none;">
                                 <div class="form-grid">
                                     <div class="form-group">
-                                        <label class="form-label">Link chat khách hàng</label>
-                                        <div class="link-input-group">
-                                            <input id="chatLink" class="form-input" type="url" placeholder="https://m.me/khachhang hoặc https://zalo.me/..." />
-                                            <button type="button" class="btn-copy-link" onclick="copyCurrentChatLink()" title="Copy link">
-                                                <span class="btn-icon">📋</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="form-group">
-                                        <label class="form-label">Mã đơn hàng</label>
-                                        <input id="orderCode" class="form-input" type="text" placeholder="VD: DH001, ORDER123..." />
-                                    </div>
-                                    
-                                    <div class="form-group">
                                         <label class="form-label">Tag (phân loại)</label>
                                         <div class="tag-select-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                                            <select id="noteTagSelect" class="form-select" style="min-width:220px;">
-                                                <option value="">— Chọn tag —</option>
-                                                <option value="chua-xu-ly">Chưa xử lý</option>
+                                            <select id="noteTagSelect" class="form-select" style="min-width:220px;" onchange="toggleNoteFields()">
+                                                <option value="chua-xu-ly" selected>Chưa xử lý</option>
                                                 <option value="note-thong-tin">Note thông tin</option>
                                             </select>
                                         </div>
-                                        
+                                    </div>
+                                    
+                                    <!-- Fields for "Chưa xử lý" -->
+                                    <div id="noteAdditionalFields">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label">Link chat khách hàng</label>
+                                                <div class="link-input-group">
+                                                    <input type="url" id="noteChatLink" class="form-input" placeholder="https://m.me/khachhang hoặc https://zalo.me/...">
+                                                    <button type="button" class="btn-copy-link" onclick="copyCurrentChatLink()" title="Copy link">
+                                                        <span class="btn-icon">📋</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="form-group">
+                                                <label class="form-label">Mã đơn hàng</label>
+                                                <input type="text" id="noteOrderId" class="form-input" placeholder="VD: DH001, ORDER123...">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Fields for "Note thông tin" -->
+                                    <div id="noteInfoFields" style="display:none;">
+                                        <div class="form-group">
+                                            <label class="form-label">Tiêu đề</label>
+                                            <input type="text" id="noteTitle" class="form-input" placeholder="Nhập tiêu đề ghi chú...">
+                                        </div>
                                     </div>
                                     
                                     <div class="form-group full-width">
@@ -921,6 +900,47 @@
                                         <span id="notesCount">0 ghi chú</span>
                                     </div>
                                 </div>
+                                
+                                <!-- Search box -->
+                                <div class="notes-search">
+                                    <div class="search-input-group">
+                                        <input type="text" id="notesSearchInput" class="form-input" placeholder="Tìm kiếm theo mã đơn hàng, link chat, nội dung..." onkeyup="searchNotes()">
+                                        <button class="btn btn-outline btn-sm" onclick="clearNotesSearch()" title="Xóa tìm kiếm">
+                                            <span class="btn-icon">❌</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+            <!-- Filter buttons -->
+            <div class="notes-filters">
+                <button class="chip active" onclick="filterNotesByCategory('all')">Tất cả</button>
+                <button class="chip" onclick="filterNotesByCategory('note-thong-tin')">Note thông tin</button>
+                <button class="chip" onclick="filterNotesByCategory('chua-xu-ly')">Chưa xử lý</button>
+                <button class="chip" onclick="filterNotesByCategory('completed')">Hoàn thành</button>
+            </div>
+            
+            <!-- Time filters -->
+            <div class="notes-time-filters">
+                <button class="chip active" onclick="filterNotesByTime('all')">Tất cả thời gian</button>
+                <button class="chip" onclick="filterNotesByTime('today')">Hôm nay</button>
+                <button class="chip" onclick="filterNotesByTime('yesterday')">Hôm qua</button>
+                <button class="chip" onclick="filterNotesByTime('week')">Tuần này</button>
+                <button class="chip" onclick="filterNotesByTime('month')">Tháng này</button>
+            </div>
+            
+            <!-- Bulk actions for completed notes -->
+            <div id="bulkActionsContainer" class="notes-bulk-actions" style="display: none;">
+                <div class="bulk-actions-header">
+                    <label class="bulk-checkbox">
+                        <input type="checkbox" id="selectAllCompleted" onchange="toggleSelectAllCompleted()">
+                        <span class="checkmark"></span>
+                        Chọn tất cả
+                    </label>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedCompleted()" id="deleteSelectedBtn" disabled>
+                        🗑️ Xóa đã chọn
+                    </button>
+                </div>
+            </div>
                                 
                                 <div id="notesList" class="notes-container">
                                     <div class="empty-state">
@@ -1454,7 +1474,6 @@
     <script src="js/app.js"></script>
     <script src="js/modules/refund.js"></script>
     <script src="js/modules/admin.js"></script>
-    <script src="js/modules/templates.js"></script>
     <script src="js/modules/upgrade.js"></script>
     <script src="js/modules/schedule.js"></script>
     <script src="js/modules/notes.js"></script>
@@ -1518,6 +1537,27 @@
     </div>
 
     <div id="versionBadge" class="version-badge">v0.0.2.5</div>
-    <div id="toastContainer" class="toast-container"></div>
+    <div id="toastContainer" class="toast-container">    </div>
+
+    <!-- Delete Note Modal -->
+        <div id="deleteNoteModal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-icon">🗑️</div>
+                    <h3>Xóa ghi chú</h3>
+                </div>
+                <div class="modal-body">
+                    <p>Bạn có chắc muốn xóa ghi chú này không?</p>
+                    <p class="modal-warning">Hành động này không thể hoàn tác.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeDeleteModal()">Hủy</button>
+                    <button class="btn btn-danger" onclick="confirmDeleteNote()">Xóa</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modern Notification System -->
+        <div id="notificationContainer" class="notification-container"></div>
 </body>
 </html>
