@@ -1421,11 +1421,17 @@ window.clearRefundProductSelection = clearRefundProductSelection;
 window.clearRefundDates = clearRefundDates;
 
 function getDefaultTemplate() {
-    return `Mã đơn {{orderId}} - Sản phẩm: {{productName}}
-Thời gian sử dụng: {{startDate}} – {{endDate}}
-Số ngày còn lại: {{daysRemaining}} ngày
-Số tiền hoàn: {{refund}}.`;
+    return `Kính gửi Quý khách,
+
+Centrix xin thông tin kết quả hoàn tiền cho đơn {{orderId}} – gói {{productName}} như sau:
+- Khoảng thời gian tính: {{startDate}} → {{endDate}}
+- Số ngày còn lại: {{daysRemaining}} ngày
+- Số tiền hoàn dự kiến: {{refund}}
+
+Centrix sẽ tiến hành xử lý và chuyển hoàn trong vòng 1–2 ngày làm việc.
+Trân trọng.`;
 }
+
 
 function getSavedTemplate() {
     try {
