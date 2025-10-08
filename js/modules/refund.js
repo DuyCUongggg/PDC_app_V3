@@ -1413,3 +1413,17 @@ window.clearRefundProduct = clearRefundProduct;
 window.clearRefundProductSelection = clearRefundProductSelection;
 window.clearRefundDates = clearRefundDates;
 
+function getDefaultTemplate() {
+    return `Mã đơn {{orderId}} - Sản phẩm: {{productName}}
+Thời gian sử dụng: {{startDate}} – {{endDate}}
+Số ngày còn lại: {{daysRemaining}} ngày
+Số tiền hoàn: {{refund}}.`;
+}
+
+function getSavedTemplate() {
+    try {
+        return localStorage.getItem('refund_template') || getDefaultTemplate();
+    } catch {
+        return getDefaultTemplate();
+    }
+}
