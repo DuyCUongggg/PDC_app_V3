@@ -891,14 +891,21 @@ function createCustomerMessage(result) {
         endDate = formatDMY(new Date());
     }
 
-    // Lấy orderId đã extract (nếu có)
     let orderId = '';
     try {
-        const extractedBox = document.getElementById('refundOrderExtractResult');
-        if (extractedBox && extractedBox.dataset) {
-            orderId = extractedBox.dataset.orderId || '';
+        // Ưu tiên lấy từ biến toàn cục
+        orderId = window.__extractedOrderId || '';
+
+        // Nếu vẫn trống, fallback về DOM dataset (giữ tương thích)
+        if (!orderId) {
+            const extractedBox = document.getElementById('refundOrderExtractResult');
+            if (extractedBox && extractedBox.dataset) {
+                orderId = extractedBox.dataset.orderId || '';
+            }
         }
     } catch { }
+
+
 
     const template = getSavedTemplate();
 
