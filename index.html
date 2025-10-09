@@ -911,22 +911,6 @@
                                     </div>
                                 </div>
                                 
-            <!-- Filter buttons -->
-            <div class="notes-filters">
-                <button class="chip active" onclick="filterNotesByCategory('all')">Tất cả</button>
-                <button class="chip" onclick="filterNotesByCategory('note-thong-tin')">Note thông tin</button>
-                <button class="chip" onclick="filterNotesByCategory('chua-xu-ly')">Chưa xử lý</button>
-                <button class="chip" onclick="filterNotesByCategory('completed')">Hoàn thành</button>
-            </div>
-            
-            <!-- Time filters -->
-            <div class="notes-time-filters">
-                <button class="chip active" onclick="filterNotesByTime('all')">Tất cả thời gian</button>
-                <button class="chip" onclick="filterNotesByTime('today')">Hôm nay</button>
-                <button class="chip" onclick="filterNotesByTime('yesterday')">Hôm qua</button>
-                <button class="chip" onclick="filterNotesByTime('week')">Tuần này</button>
-                <button class="chip" onclick="filterNotesByTime('month')">Tháng này</button>
-            </div>
             
             <!-- Bulk actions for completed notes -->
             <div id="bulkActionsContainer" class="notes-bulk-actions" style="display: none;">
@@ -941,6 +925,37 @@
                     </button>
                 </div>
             </div>
+                                
+                                <!-- Scientific Filter System -->
+                                <div class="scientific-filter">
+                                    <div class="filter-section">
+                                        <div class="filter-group">
+                                            <label class="filter-label">Trạng thái</label>
+                                            <div class="filter-options">
+                                                <button class="filter-option active" data-filter="pending">Chưa xử lý</button>
+                                                <button class="filter-option" data-filter="info">Thông tin</button>
+                                                <button class="filter-option" data-filter="completed">Hoàn thành</button>
+                                            </div>
+                                        </div>
+                                        <div class="filter-group">
+                                            <label class="filter-label">Thời gian</label>
+                                            <div class="filter-options">
+                                                <button class="filter-option active" data-time="all">Tất cả</button>
+                                                <button class="filter-option" data-time="today">Hôm nay</button>
+                                                <button class="filter-option" data-time="week">Tuần này</button>
+                                                <button class="filter-option" data-time="month">Tháng này</button>
+                                            </div>
+                                        </div>
+                                        <div class="filter-group">
+                                            <label class="filter-label">Sắp xếp</label>
+                                            <select class="filter-select" id="sortSelect">
+                                                <option value="newest">Mới nhất</option>
+                                                <option value="oldest">Cũ nhất</option>
+                                                <option value="alphabetical">A-Z</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
                                 
                                 <div id="notesList" class="notes-container">
                                     <div class="empty-state">
@@ -1173,26 +1188,6 @@
 
     <div class="mobile-overlay" id="mobileOverlay"></div>
 
-    <!-- Modal cài đặt mẫu gửi khách -->
-    <div id="templateModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 12px; max-width: 800px; width: 90%; max-height: 90vh; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-            <div style="padding: 20px; border-bottom: 1px solid #e1e8ed; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0; color: #2c3e50;">⚙️ Cài đặt mẫu gửi khách</h3>
-                <button onclick="closeTemplateModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
-            </div>
-            <div style="padding: 20px;">
-                <p style="margin: 0 0 15px 0; color: #64748b; font-size: 14px;">
-                    Chỉnh sửa mẫu tin nhắn gửi khách. Biến: {{productName}}, {{startDate}}, {{endDate}}, {{daysRemaining}}, {{refund}}, {{orderId}}
-                </p>
-                <textarea id="templateEditor" style="width: 100%; min-height: 300px; padding: 12px; border: 2px solid #e1e8ed; border-radius: 6px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
-            </div>
-            <div style="padding: 20px; border-top: 1px solid #e1e8ed; display: flex; gap: 10px; justify-content: flex-end;">
-                <button onclick="resetTemplate()" style="padding: 8px 16px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer;">Khôi phục mặc định</button>
-                <button onclick="saveTemplate()" style="padding: 8px 16px; border: none; background: #3498db; color: white; border-radius: 6px; cursor: pointer;">Lưu mẫu</button>
-                <button onclick="closeTemplateModal()" style="padding: 8px 16px; border: 1px solid #ddd; background: #f8f9fa; border-radius: 6px; cursor: pointer;">Đóng</button>
-            </div>
-        </div>
-    </div>
 
 
     <!-- Edit Modal -->
@@ -1217,6 +1212,7 @@
                             <select id="editDurationUnit" class="form-select">
                                 <option value="ngày">ngày</option>
                                 <option value="tháng">tháng</option>
+                                <option value="năm">năm</option>
                             </select>
                         </div>
                     </div>

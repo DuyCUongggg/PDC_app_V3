@@ -7,7 +7,7 @@ if (!window.appData.notes) window.appData.notes = [];
 // Debounce/guard for fetch to prevent spam
 let _notesSyncInFlight = false;
 let _lastNotesFetchAt = 0;
-const NOTES_FETCH_MIN_INTERVAL_MS = 5000; // 5s - reduced for better real-time sync
+const NOTES_FETCH_MIN_INTERVAL_MS = 30000; // 30s - reduced sync frequency
 let _notesSyncInterval = null;
 let _notesRetryCount = 0;
 const MAX_RETRY_COUNT = 3;
@@ -27,7 +27,7 @@ const MAX_RETRY_COUNT = 3;
     // Try to pull latest from Google Sheets (Sheet2)
     try { scheduleRefreshNotes(0); } catch (e) { /* Handle error silently */ }
     
-    // Start automatic periodic sync
+    // Start automatic periodic sync (reduced frequency)
     startPeriodicSync();
     
     // Clean up deleted notes on startup
@@ -151,7 +151,8 @@ function createNote() {
     // Fire-and-forget sync to Google Sheets for real-time-ish persistence
     try { syncNotesToGoogleSheets(); } catch (e) { /* Handle error silently */ }
     
-    showNotification('Đã tạo ghi chú! Đang đồng bộ...', 'info');
+    // Giảm bớt thông báo: chỉ báo thành công khi tạo
+    showNotification('Đã tạo ghi chú!', 'success');
 }
 window.createNote = createNote;
 
@@ -180,7 +181,8 @@ function copyCurrentChatLink() {
     }
     
     navigator.clipboard.writeText(chatLink).then(() => {
-        showNotification('Đã copy link chat!', 'success');
+    // Không cần thông báo thêm nếu copy thành công im lặng cũng được
+    showNotification('Đã copy link chat!', 'success');
     }).catch(() => {
         showNotification('Không thể copy link!', 'error');
     });
@@ -220,19 +222,22 @@ async function completeNote(noteId) {
     renderNotesCategories();
     saveNotesToStorage();
     
-    // Sync to Google Sheets
+    // Thông báo thành công ngay lập tức (cục bộ)
+    try {
+        const label = note.orderCode || note.title || 'Ghi chú';
+        // Một thông báo gọn
+        showNotification(`Đã hoàn thành: ${label}`, 'success');
+    } catch {}
+
+    // Đồng bộ nền lên Google Sheets (im lặng nếu lỗi)
     try {
         const url = (window.GAS_URL || '') + '?token=' + encodeURIComponent(window.GAS_TOKEN || '');
-        const payload = { action: 'notesUpdate', notes: [note] };
+        const payload = { action: 'notesUpsert', notes: [note] };
         const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || !json.success) {
-            showNotification(`✅ Đã hoàn thành: ${note.orderCode} (lỗi đồng bộ với Sheets)`, 'warning');
-        } else {
-            showNotification(`✅ Đã hoàn thành: ${note.orderCode}`, 'success');
-        }
+        // Im lặng nếu thất bại; sẽ được đồng bộ lại qua cơ chế auto-sync sau
+        await res.json().catch(() => ({}));
     } catch (e) {
-        showNotification(`✅ Đã hoàn thành: ${note.orderCode} (lỗi đồng bộ với Sheets)`, 'warning');
+        // Không spam cảnh báo; để auto-sync xử lý
     }
 }
 window.completeNote = completeNote;
@@ -252,7 +257,7 @@ async function deleteNote(noteId) {
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json.success) { /* Handle error silently */ }
     } catch (e) { /* Handle error silently */ }
-    showNotification('Đã xóa ghi chú! (đang đồng bộ)', 'info');
+    showNotification('Đã xóa ghi chú!', 'success');
 }
 window.deleteNote = deleteNote;
 
@@ -372,7 +377,7 @@ function renderNotesList() {
     }
     
     if (notes.length === 0) {
-        container.innerHTML = `
+    container.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">📋</div>
                 <h4>Chưa có ghi chú</h4>
@@ -405,9 +410,12 @@ function renderNotesList() {
         }
         
         let headerContent = '';
-        if (isInfoNote && note.title) {
-            // For "Note thông tin" - show title
-            headerContent = `<div class="v3-title">${String(note.title || '').replace(/\n/g,'<br>')}</div>`;
+        if (isInfoNote) {
+            // For "Note thông tin" - show title (fallback to orderCode or first content line)
+            const rawTitle = String(note.title || note.orderCode || '').trim();
+            const fallback = String(note.content || '').split('\n')[0] || '';
+            const titleToShow = (rawTitle || fallback || '');
+            headerContent = `<div class="v3-title">${titleToShow.replace(/\n/g,'<br>')}</div>`;
         } else {
             // For "Chưa xử lý" - show chat link
         const link = String(note.chatLink || '');
@@ -420,8 +428,17 @@ function renderNotesList() {
         const checkboxHtml = (note.status === 'completed' || note.status === 'đã hoàn thành') ? 
             `<input type="checkbox" class="note-checkbox" data-note-id="${note.id}" onchange="updateBulkActions()">` : '';
         
+        // Determine card type for border color - only for info and completed
+        let cardType = '';
+        if (note.status === 'completed' || note.status === 'đã hoàn thành') {
+            cardType = 'completed';
+        } else if (isInfoNote) {
+            cardType = 'note-thong-tin';
+        }
+        // For pending cards, cardType remains empty string - no special styling
+        
         return `
-        <div class="note-cardv3 ${typeClass}" id="note-${note.id}" data-note-id="${note.id}">
+        <div class="note-cardv3 ${typeClass}" id="note-${note.id}" data-note-id="${note.id}" data-type="${cardType}">
             ${checkboxHtml}
             <div class="v3-head">
                 ${headerContent}
@@ -429,101 +446,28 @@ function renderNotesList() {
             </div>
             <div class="v3-body">${String(note.content || '').replace(/\n/g,'<br>')}</div>
             <div class="v3-foot">
-                <span class="v3-time">${formatNoteDate(note.createdAt)}</span>
+                <span class="v3-time">${formatNoteDateDetailed(note.createdAt)}</span>
             </div>
             <div class="v3-actions">
+                <button class="icon-btn" title="Chỉnh sửa" onclick="editNote('${note.id}')">✏️</button>
                 ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : (isInfoNote ? '' : `<button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>`)}
                 ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'delete' : 'ok'}" title="${isInfoNote ? 'Xóa note' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deleteNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🗑️' : '✅'}</button>`}
             </div>
         </div>`;
     }).join('');
     
-    // Ensure we always have 2 columns by adding empty placeholder if needed
-    let masonryContent = cards;
-    if (cards.length % 2 === 1) {
-        masonryContent = cards + '<div class="note-placeholder"></div>';
-    }
-    
-    // Force re-render to ensure proper layout
-    container.innerHTML = '';
-    setTimeout(() => {
-        container.innerHTML = `<div class="notes-masonry">${masonryContent}</div>`;
-        setTimeout(() => {
-            applyMasonryLayout();
-            
-            // Remove filtering class after layout is applied
-            if (masonry) {
-                setTimeout(() => {
-                    masonry.classList.remove('filtering');
-                }, 50);
-            }
-        }, 100);
-    }, 10);
-    
-    // Add stagger animation to new notes
-    setTimeout(() => {
-        document.querySelectorAll('.note-item').forEach(item => {
-            item.classList.add('animate-loaded');
-        });
-    }, 100);
+    // Masonry layout for notes
+    container.innerHTML = `<div class="notes-masonry">${cards}</div>`;
 }
 
 // Render categories into sidebar with counts
 function renderNotesCategories() {
-    const el = document.getElementById('notesCategoryList');
-    if (!el) return;
-    const notes = Array.isArray(window.appData.notes) ? window.appData.notes : [];
-    const base = {
-        all: notes.length,
-        'chua-xu-ly': 0,
-        'note-thong-tin': 0
-    };
-    notes.forEach(n => {
-        const tags = String(n.tags || '').toLowerCase().trim();
-        if (tags === 'chua-xu-ly') base['chua-xu-ly']++;
-        else if (tags === 'note-thong-tin') base['note-thong-tin']++;
-    });
-    const active = window.__notesActiveCategory || 'all';
-    const item = (key, label, count) => `
-        <div class="notes-category-item tag-${key} ${active===key?'active':''}" onclick="filterNotesByCategory('${key}')">
-            <span>${label}</span>
-            <span class="count">${count}</span>
-        </div>`;
-    const html = [
-        item('all','Tất cả', base.all),
-        item('chua-xu-ly','Chưa xử lý', base['chua-xu-ly']),
-        item('note-thong-tin','Note thông tin', base['note-thong-tin'])
-    ].join('');
-    el.innerHTML = html;
+    // This function is now handled by the new filter system
+    // Keeping empty to avoid breaking existing calls
 }
 window.renderNotesCategories = renderNotesCategories;
 
-// Category filter handler
-window.filterNotesByCategory = function(category) {
-    window.__notesActiveCategory = category || 'all';
-    renderNotesCategories();
-    renderNotesList();
-    
-    // Update filter button states
-    const filterButtons = document.querySelectorAll('.notes-filters .chip');
-    filterButtons.forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.textContent.trim() === 'Tất cả' && category === 'all') {
-            btn.classList.add('active');
-        } else if (btn.textContent.trim() === 'Note thông tin' && category === 'note-thong-tin') {
-            btn.classList.add('active');
-        } else if (btn.textContent.trim() === 'Chưa xử lý' && category === 'chua-xu-ly') {
-            btn.classList.add('active');
-        } else if (btn.textContent.trim() === 'Hoàn thành' && category === 'completed') {
-            btn.classList.add('active');
-        }
-    });
-}
-
-
-
-
-
+//
 
 // Settings modal handlers
 window.openTagsSettings = function() {
@@ -649,14 +593,14 @@ function startPeriodicSync() {
         clearInterval(_notesSyncInterval);
     }
     
-    // Sync every 30 seconds
+    // Sync every 2 minutes (reduced frequency)
     _notesSyncInterval = setInterval(async () => {
         try {
-            await refreshNotesFromSheets(true);
+            await refreshNotesFromSheets(false); // Silent sync
         } catch (e) {
             // Handle error silently
         }
-    }, 30000);
+    }, 120000);
 }
 
 // Stop periodic sync
@@ -693,24 +637,24 @@ async function syncNotesToGoogleSheets() {
             // Handle error silently
             _notesRetryCount++;
             if (_notesRetryCount < MAX_RETRY_COUNT) {
-                showNotification(`Lưu ghi chú thất bại, thử lại lần ${_notesRetryCount}...`, 'warning');
+                // Retry sync silently
                 setTimeout(() => syncNotesToGoogleSheets(), 2000 * _notesRetryCount);
             } else {
-            showNotification('Lưu ghi chú lên Sheet2 thất bại!', 'error');
+            // Sync failed, will retry later
                 _notesRetryCount = 0;
             }
         } else {
-            showNotification(`Đã đồng bộ ${payload.notes.length} ghi chú lên Sheet2`, 'success');
+            // Sync successful, no notification needed
             _notesRetryCount = 0;
         }
     } catch (e) {
         // Handle error silently
         _notesRetryCount++;
         if (_notesRetryCount < MAX_RETRY_COUNT) {
-            showNotification(`Lỗi mạng, thử lại lần ${_notesRetryCount}...`, 'warning');
+            // Network error, retry silently
             setTimeout(() => syncNotesToGoogleSheets(), 2000 * _notesRetryCount);
         } else {
-        showNotification('Lỗi mạng khi đồng bộ ghi chú!', 'error');
+        // Network sync failed, will retry later
             _notesRetryCount = 0;
         }
     } finally {
@@ -738,7 +682,7 @@ async function refreshNotesFromSheets(force = false) {
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) {
             if (force) {
-                showNotification('Không thể kết nối đến Sheet2', 'error');
+                // Connection failed, will retry later
             }
             return;
         }
@@ -746,7 +690,7 @@ async function refreshNotesFromSheets(force = false) {
         const data = await res.json();
         if (!data || !data.success || !Array.isArray(data.data)) {
             if (force) {
-                showNotification('Dữ liệu từ Sheet2 không hợp lệ', 'error');
+                // Invalid data, skip sync
             }
             return;
         }
@@ -770,7 +714,7 @@ async function refreshNotesFromSheets(force = false) {
                 renderNotesList();
                 saveNotesToStorage();
                 if (force) {
-                showNotification('Đã tải Sheet2: 0 ghi chú (đã dọn rác local)', 'info');
+                // No notes to sync
                 }
             }
             return;
@@ -800,13 +744,13 @@ async function refreshNotesFromSheets(force = false) {
         renderNotesList();
         saveNotesToStorage();
             if (force) {
-        showNotification(`Đã tải từ Sheet2: ${incoming.length} ghi chú`, 'success');
+        // Notes loaded successfully, no notification needed
             }
         }
     } catch (e) {
         // Handle error silently
         if (force) {
-        showNotification('Không tải được ghi chú từ Sheet2', 'error');
+        // Failed to load notes, will retry later
         }
     } finally {
         _notesSyncInFlight = false;
@@ -834,48 +778,9 @@ function normalizeNotes() {
 }
 
 // Sync indicator functions
-function showSyncIndicator(message) {
-    try {
-        let indicator = document.getElementById('notesSyncIndicator');
-        if (!indicator) {
-            indicator = document.createElement('div');
-            indicator.id = 'notesSyncIndicator';
-            indicator.className = 'sync-indicator';
-            indicator.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #3182ce;
-                color: white;
-                padding: 8px 16px;
-                border-radius: 20px;
-                font-size: 14px;
-                font-weight: 600;
-                z-index: 10000;
-                box-shadow: 0 4px 12px rgba(49, 130, 206, 0.3);
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            `;
-            document.body.appendChild(indicator);
-        }
-        indicator.innerHTML = `<span>🔄</span><span>${message}</span>`;
-        indicator.style.display = 'flex';
-    } catch (e) {
-        // Handle error silently
-    }
-}
+function showSyncIndicator(message) { /* unified toast system handles user-visible messages */ }
 
-function hideSyncIndicator() {
-    try {
-        const indicator = document.getElementById('notesSyncIndicator');
-        if (indicator) {
-            indicator.style.display = 'none';
-        }
-    } catch (e) {
-        // Handle error silently
-    }
-}
+function hideSyncIndicator() { /* no-op (avoid duplicate overlays) */ }
 
 // Clean up notes that no longer exist in Google Sheets
 async function cleanupDeletedNotes() {
@@ -899,7 +804,7 @@ async function cleanupDeletedNotes() {
             renderNotesList();
             renderNotesCategories();
             saveNotesToStorage();
-            showNotification(`Đã dọn dẹp ${localNotes.length - notesToKeep.length} ghi chú đã bị xóa`, 'info');
+            // Cleanup completed silently
         }
     } catch (e) {
         // Handle error silently
@@ -914,7 +819,7 @@ window.syncNotesNow = async function() {
 window.clearNotesCache = function() { 
     try { 
         localStorage.removeItem('pdc_app_data'); 
-        showNotification('Đã xóa cache local, reload...', 'info'); 
+        // Cache cleared, reloading 
         setTimeout(() => location.reload(), 300); 
     } catch {} 
 };
@@ -994,49 +899,7 @@ function clearNotesSearch() {
 window.searchNotes = searchNotes;
 window.clearNotesSearch = clearNotesSearch;
 
-// Time filtering functions
-function filterNotesByTime(timeFilter) {
-    // Update active state
-    document.querySelectorAll('.notes-time-filters .chip').forEach(chip => {
-        chip.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    
-    // Store time filter
-    window.__notesTimeFilter = timeFilter;
-    
-    // Re-render notes list
-    renderNotesList();
-}
-
-function isNoteInTimeRange(note, timeFilter) {
-    if (timeFilter === 'all') return true;
-    
-    const noteDate = new Date(note.createdAt);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const monthAgo = new Date(today);
-    monthAgo.setDate(monthAgo.getDate() - 30);
-    
-    switch (timeFilter) {
-        case 'today':
-            return noteDate >= today;
-        case 'yesterday':
-            return noteDate >= yesterday && noteDate < today;
-        case 'week':
-            return noteDate >= weekAgo;
-        case 'month':
-            return noteDate >= monthAgo;
-        default:
-            return true;
-    }
-}
-
-window.filterNotesByTime = filterNotesByTime;
+//
 
 // Delete note function
 function deleteNote(noteId) {
@@ -1163,66 +1026,22 @@ window.toggleSelectAllCompleted = toggleSelectAllCompleted;
 window.updateBulkActions = updateBulkActions;
 window.deleteSelectedCompleted = deleteSelectedCompleted;
 
-// Modern Notification System
+// Notes notifications delegate to the global toast system (refund-style)
 function showNotification(message, type = 'info', title = '') {
-    const container = document.getElementById('notificationContainer');
-    if (!container) return;
-    
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    
-    const icons = {
-        success: '✅',
-        error: '❌',
-        warning: '⚠️',
-        info: 'ℹ️'
-    };
-    
-    const titles = {
-        success: 'Thành công',
-        error: 'Lỗi',
-        warning: 'Cảnh báo',
-        info: 'Thông báo'
-    };
-    
-    notification.innerHTML = `
-        <div class="notification-content">
-            <div class="notification-icon">${icons[type] || icons.info}</div>
-            <div class="notification-body">
-                <div class="notification-title">${title || titles[type] || titles.info}</div>
-                <div class="notification-message">${message}</div>
-            </div>
-        </div>
-        <button class="notification-close" onclick="removeNotification(this)">×</button>
-    `;
-    
-    container.appendChild(notification);
-    
-    // Trigger animation
-    setTimeout(() => {
-        notification.classList.add('show');
-    }, 10);
-    
-    // Auto remove after 5 seconds
-    setTimeout(() => {
-        removeNotification(notification.querySelector('.notification-close'));
-    }, 5000);
-}
-
-function removeNotification(closeBtn) {
-    const notification = closeBtn.closest('.notification');
-    if (!notification) return;
-    
-    notification.classList.add('removing');
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.parentNode.removeChild(notification);
+    try {
+        const normalized = (type === 'warning') ? 'error' : (type === 'info' ? 'success' : type);
+        if (typeof window.createToast === 'function') {
+            // Use app-level toasts for consistent styling
+            const toastType = normalized === 'success' ? 'success' : 'error';
+            window.createToast(message, toastType, 3000);
+            return;
         }
-    }, 300);
+        if (typeof window.showNotification === 'function' && window.showNotification !== showNotification) {
+            window.showNotification(message, normalized);
+            return;
+        }
+    } catch {}
 }
-
-window.showNotification = showNotification;
-window.removeNotification = removeNotification;
 
 // Functions are already exported above, removing duplicate exports
 
@@ -1319,4 +1138,395 @@ window.removeSavedTag = function(tag) {
     } catch {}
 }
 
-// removed bulk add from modal (simplified UI)
+//
+
+// Edit note function
+function editNote(noteId) {
+    const note = window.appData.notes.find(n => n.id === noteId);
+    if (!note) {
+        showNotification('Không tìm thấy ghi chú!', 'error');
+        return;
+    }
+    
+    // Create edit modal
+    showEditNoteModal(note);
+}
+window.editNote = editNote;
+
+// Show edit note modal
+function showEditNoteModal(note) {
+    // Remove existing modal if any
+    const existingModal = document.querySelector('.edit-note-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    const modal = document.createElement('div');
+    modal.className = 'edit-note-modal';
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="closeEditNoteModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chỉnh sửa ghi chú</h3>
+                <button class="modal-close" onclick="closeEditNoteModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Mã đơn hàng</label>
+                    <input type="text" id="editOrderCode" class="form-input" value="${note.orderCode || ''}" placeholder="Nhập mã đơn hàng...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Link chat</label>
+                    <input type="text" id="editChatLink" class="form-input" value="${note.chatLink || ''}" placeholder="Nhập link chat...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tiêu đề</label>
+                    <input type="text" id="editNoteTitle" class="form-input" value="${note.title || ''}" placeholder="Nhập tiêu đề...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nội dung</label>
+                    <textarea id="editNoteContent" class="form-textarea" rows="4" placeholder="Nhập nội dung ghi chú...">${note.content || ''}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loại ghi chú</label>
+                    <div class="note-type-options">
+                        <label class="radio-option">
+                            <input type="radio" name="noteType" value="chua-xu-ly" ${(note.tags || '').includes('chua-xu-ly') ? 'checked' : ''}>
+                            <span class="radio-label">Chưa xử lý</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="noteType" value="note-thong-tin" ${(note.tags || '').includes('note-thong-tin') ? 'checked' : ''}>
+                            <span class="radio-label">Note thông tin</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeEditNoteModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="saveEditNote('${note.id}')">Lưu</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    
+    // Focus on first input
+    setTimeout(() => {
+        document.getElementById('editOrderCode').focus();
+    }, 100);
+}
+window.showEditNoteModal = showEditNoteModal;
+
+// Close edit note modal
+function closeEditNoteModal() {
+    const modal = document.querySelector('.edit-note-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+window.closeEditNoteModal = closeEditNoteModal;
+
+// Save edited note
+function saveEditNote(noteId) {
+    const note = window.appData.notes.find(n => n.id === noteId);
+    if (!note) {
+        showNotification('Không tìm thấy ghi chú!', 'error');
+        return;
+    }
+    
+    const orderCode = document.getElementById('editOrderCode').value.trim();
+    const chatLink = document.getElementById('editChatLink').value.trim();
+    const title = document.getElementById('editNoteTitle').value.trim();
+    const content = document.getElementById('editNoteContent').value.trim();
+    const noteType = document.querySelector('input[name="noteType"]:checked');
+    const tags = noteType ? noteType.value : '';
+    
+    if (!content) {
+        showNotification('Nhập nội dung ghi chú!', 'error');
+        return;
+    }
+    
+    // Update note
+    note.orderCode = orderCode;
+    note.chatLink = chatLink;
+    note.title = title;
+    note.content = content;
+    note.tags = tags;
+    note.updatedAt = new Date().toISOString();
+    
+    // Close modal
+    closeEditNoteModal();
+    
+    // Re-render list
+    renderNotesList();
+    renderNotesCategories();
+    
+    // Save to localStorage
+    saveNotesToStorage();
+    
+    // Sync to Google Sheets
+    try { syncNotesToGoogleSheets(); } catch (e) { /* Handle error silently */ }
+    
+    showNotification('Đã cập nhật ghi chú!', 'success');
+}
+window.saveEditNote = saveEditNote;
+
+// Format note date with detailed time for old notes
+function formatNoteDateDetailed(dateString) {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const noteDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    // If it's today, show time only
+    if (noteDate.getTime() === today.getTime()) {
+        return date.toLocaleTimeString('vi-VN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    }
+    
+    // If it's not today, show full date and time
+    return date.toLocaleString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// Filter system - removed
+
+// Filter functions - removed
+
+// Filter render functions - removed
+// Scientific Filter System
+let currentStatusFilter = 'pending';
+let currentTimeFilter = 'all';
+let currentSortOrder = 'newest';
+
+// Apply scientific filter
+function applyScientificFilter() {
+    const notes = window.appData.notes || [];
+    let filteredNotes = [...notes];
+    
+    // Apply status filter
+    filteredNotes = filteredNotes.filter(note => {
+        const isInfoNote = (note.tags || '').includes('note-thong-tin');
+        const isCompleted = note.status === 'completed' || note.status === 'đã hoàn thành';
+        
+        switch (currentStatusFilter) {
+            case 'pending':
+                return !isCompleted && !isInfoNote;
+            case 'info':
+                return isInfoNote;
+            case 'completed':
+                return isCompleted;
+            default:
+                return true;
+        }
+    });
+    
+    // Apply time filter
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    filteredNotes = filteredNotes.filter(note => {
+        const noteDate = new Date(note.createdAt);
+        const noteDay = new Date(noteDate.getFullYear(), noteDate.getMonth(), noteDate.getDate());
+        
+        switch (currentTimeFilter) {
+            case 'today':
+                return noteDay.getTime() === today.getTime();
+            case 'week':
+                return noteDate >= weekStart;
+            case 'month':
+                return noteDate >= monthStart;
+            default:
+                return true;
+        }
+    });
+    
+    // Apply sorting
+    switch (currentSortOrder) {
+        case 'newest':
+            filteredNotes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            break;
+        case 'oldest':
+            filteredNotes.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            break;
+        case 'alphabetical':
+            filteredNotes.sort((a, b) => {
+                const aTitle = (a.title || a.chatLink || '').toLowerCase();
+                const bTitle = (b.title || b.chatLink || '').toLowerCase();
+                return aTitle.localeCompare(bTitle);
+            });
+            break;
+    }
+    
+    return filteredNotes;
+}
+
+// Render filtered notes with scientific approach
+function renderScientificFilteredNotes() {
+    const filteredNotes = applyScientificFilter();
+    const container = document.getElementById('notesList');
+    if (!container) return;
+    
+    // Show/hide bulk actions based on current status filter (completed)
+    try {
+        const bulkActionsContainer = document.getElementById('bulkActionsContainer');
+        if (bulkActionsContainer) {
+            bulkActionsContainer.style.display = (currentStatusFilter === 'completed') ? 'block' : 'none';
+        }
+    } catch {}
+    
+    if (filteredNotes.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <h4>Không tìm thấy ghi chú</h4>
+                <p>Thử thay đổi bộ lọc để xem thêm ghi chú</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const cards = filteredNotes.map(note => {
+        const isInfoNote = (note.tags || '').includes('note-thong-tin');
+        let typeLabel, typeClass;
+        
+        if (note.status === 'completed' || note.status === 'đã hoàn thành') {
+            typeLabel = 'Hoàn thành';
+            typeClass = 'note-completed';
+        } else if (isInfoNote) {
+            typeLabel = 'Thông tin';
+            typeClass = 'note-info';
+        } else {
+            typeLabel = 'Chưa xử lý';
+            typeClass = 'note-pending';
+        }
+        
+        let headerContent = '';
+        if (isInfoNote) {
+            const rawTitle = String(note.title || note.orderCode || '').trim();
+            const fallback = String(note.content || '').split('\n')[0] || '';
+            const titleToShow = (rawTitle || fallback || '');
+            headerContent = `<div class="v3-title">${titleToShow.replace(/\n/g,'<br>')}</div>`;
+        } else {
+            const link = String(note.chatLink || '');
+            const linkShort = link.length > 40 ? link.substring(0,40) + '…' : link;
+            const linkTitle = linkShort || '—';
+            headerContent = `<a class="v3-link" href="${link}" target="_blank" title="Mở link chat">${linkTitle}</a>`;
+        }
+        
+        const checkboxHtml = (note.status === 'completed' || note.status === 'đã hoàn thành') ? 
+            `<input type="checkbox" class="note-checkbox" data-note-id="${note.id}" onchange="updateBulkActions()">` : '';
+        
+        let cardType = '';
+        if (note.status === 'completed' || note.status === 'đã hoàn thành') {
+            cardType = 'completed';
+        } else if (isInfoNote) {
+            cardType = 'note-thong-tin';
+        }
+        // For pending cards, cardType remains empty string - no special styling
+        
+        return `
+        <div class="note-cardv3 ${typeClass}" id="note-${note.id}" data-note-id="${note.id}" data-type="${cardType}">
+            ${checkboxHtml}
+            <div class="v3-head">
+                ${headerContent}
+                <span class="v3-status ${typeClass}">${typeLabel}</span>
+            </div>
+            <div class="v3-body">${String(note.content || '').replace(/\n/g,'<br>')}</div>
+            <div class="v3-foot">
+                <span class="v3-time">${formatNoteDateDetailed(note.createdAt)}</span>
+            </div>
+            <div class="v3-actions">
+                <button class="icon-btn" title="Chỉnh sửa" onclick="editNote('${note.id}')">✏️</button>
+                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : (isInfoNote ? '' : `<button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>`)}
+                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'delete' : 'ok'}" title="${isInfoNote ? 'Xóa note' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deleteNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🗑️' : '✅'}</button>`}
+            </div>
+        </div>`;
+    }).join('');
+    
+    container.innerHTML = `<div class="notes-masonry">${cards}</div>`;
+    
+    // Update select-all and delete button state after render
+    try { updateBulkActions(); } catch {}
+}
+
+// Initialize scientific filter system
+function initScientificFilter() {
+    // Status filter buttons
+    document.querySelectorAll('.filter-option[data-filter]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-option[data-filter]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentStatusFilter = btn.dataset.filter;
+            renderScientificFilteredNotes();
+        });
+    });
+    
+    // Time filter buttons
+    document.querySelectorAll('.filter-option[data-time]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.filter-option[data-time]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentTimeFilter = btn.dataset.time;
+            renderScientificFilteredNotes();
+        });
+    });
+    
+    // Sort select
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', (e) => {
+            currentSortOrder = e.target.value;
+            renderScientificFilteredNotes();
+        });
+    }
+}
+
+// Override renderNotesList to use scientific filter
+const originalRenderNotesList = window.renderNotesList;
+window.renderNotesList = function() {
+    if (document.querySelector('.scientific-filter')) {
+        renderScientificFilteredNotes();
+    } else {
+        originalRenderNotesList();
+    }
+};
+
+// Initialize scientific filter when module loads
+setTimeout(() => {
+    initScientificFilter();
+}, 100);
+
+// Masonry-like spanning for CSS Grid (LTR) so varying heights don't affect others
+function relayoutNotesGrid() {
+    const grid = document.querySelector('.notes-grid');
+    if (!grid) return;
+    // revert to default grid rows
+    grid.querySelectorAll('.note-cardv3').forEach(card => {
+        card.style.gridRowEnd = 'auto';
+    });
+}
+
+// Recompute after renders and on resize
+window.addEventListener('resize', () => requestAnimationFrame(relayoutNotesGrid));
+const _origRender = window.renderNotesList;
+window.renderNotesList = function() {
+    _origRender();
+    requestAnimationFrame(relayoutNotesGrid);
+};
+
+// (no extra override for filtered render)
+

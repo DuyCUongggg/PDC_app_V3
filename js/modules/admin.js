@@ -24,10 +24,10 @@ function deleteSelectedProducts() {
         // Call existing delete function for each selected product
         selectedCheckboxes.forEach(checkbox => {
             const row = checkbox.closest('tr');
-            const productName = row.querySelector('.product-name').textContent;
+            const productId = row.getAttribute('data-product-id');
             // Find and delete the product
             if (typeof deleteProduct === 'function') {
-                deleteProduct(productName);
+                deleteProduct(productId);
             }
         });
         

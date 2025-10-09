@@ -107,12 +107,7 @@
     box-shadow: 0 4px 16px rgba(59, 130, 246, 0.08);
 }
 
-.note-cardv3.note-pending { 
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.04));
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.08);
-}
+/* Removed note-pending styling - pending cards should have no special colors */
 .dark .note-cardv3.note-info { 
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
     backdrop-filter: blur(10px);
@@ -120,12 +115,7 @@
     box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
 }
 
-.dark .note-cardv3.note-pending { 
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
-    backdrop-filter: blur(10px);
-    border-color: rgba(16, 185, 129, 0.3);
-    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.1);
-}
+/* Removed dark mode note-pending styling - pending cards should have no special colors */
 
 .note-cardv3.note-completed { 
     background: linear-gradient(135deg, rgba(107, 114, 128, 0.08), rgba(107, 114, 128, 0.04));
@@ -182,10 +172,10 @@
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
 }
 .v3-status.note-pending { 
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15)); 
-    color: #047857; 
-    border: 1px solid rgba(16, 185, 129, 0.4);
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+    background: #cbd5e1; /* slate-300 */
+    color: #334155; /* slate-700 */
+    border: 1px solid transparent;
+    box-shadow: none;
 }
 
 .v3-status.note-completed { 
@@ -215,10 +205,10 @@
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 .dark .v3-status.note-pending { 
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(16, 185, 129, 0.2)); 
-    color: #10b981; 
-    border: 1px solid rgba(16, 185, 129, 0.5);
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    background: #2a3140; /* darker dark slate */
+    color: #e2e8f0; /* slate-200 */
+    border: 1px solid transparent;
+    box-shadow: none;
 }
 
 .dark .v3-status.note-completed { 
@@ -235,6 +225,20 @@
 .v3-link { color:#2563eb; text-decoration:none; font-size:12px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .v3-title { font-weight:700; color:#0f172a; font-size:14px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dark .v3-title { color:#e2e8f0; }
+/* Info card title should show full text and be more prominent */
+.note-cardv3.note-info .v3-title {
+  max-width:100%;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:unset;
+  font-size:16px;
+  line-height:1.35;
+  font-weight:700;
+  color:#0e1726; /* distinct from body text */
+}
+.dark .note-cardv3.note-info .v3-title {
+  color:#f1f5f9;
+}
 
 /* Form row layout for side-by-side fields */
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -1401,96 +1405,11 @@ p {
     gap: 6px;
 }
 
-/* Notes filters */
-.notes-filters {
-    display: flex;
-    gap: 8px;
-    margin: 16px 0 12px 0;
-    flex-wrap: wrap;
-}
+/* Notes filters - removed old chip styles */
 
-.notes-time-filters {
-    display: flex;
-    gap: 8px;
-    margin: 0 0 16px 0;
-    flex-wrap: wrap;
-}
+/* Time filters styling - removed old chip styles */
 
-.notes-filters .chip {
-    padding: 6px 12px;
-    border-radius: 20px;
-    border: 1px solid var(--border-primary);
-    background: var(--bg-secondary);
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
-    transition: all 0.2s ease;
-}
-
-.notes-filters .chip:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--border-secondary);
-}
-
-.notes-filters .chip.active {
-    background: #e6f6ff;
-    border-color: #cfe8ff;
-    color: #0b74c4;
-    font-weight: 600;
-}
-
-.dark .notes-filters .chip {
-    background: #0f172a;
-    border-color: #374151;
-    color: #e5e7eb;
-}
-
-.dark .notes-filters .chip.active {
-    background: rgba(96,165,250,0.18);
-    border-color: #60a5fa;
-    color: #bfdbfe;
-}
-
-/* Time filters styling */
-.notes-time-filters .chip {
-    padding: 6px 12px;
-    border-radius: 20px;
-    border: 1px solid var(--border-primary);
-    background: var(--bg-secondary);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-    border: none;
-    background: transparent;
-    color: #64748b;
-}
-
-.notes-time-filters .chip:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--border-secondary);
-}
-
-.notes-time-filters .chip.active {
-    background: #f0f9ff;
-    border-color: #bae6fd;
-    color: #0369a1;
-    font-weight: 600;
-}
-
-.dark .notes-time-filters .chip {
-    background: #0f172a;
-    border-color: #374151;
-    color: #e5e7eb;
-}
-
-.dark .notes-time-filters .chip.active {
-    background: rgba(16, 185, 129, 0.18);
-    border-color: #10b981;
-    color: #6ee7b7;
-}
+/* Removed old dark mode chip styles */
 
 /* Bulk actions for completed notes */
 .notes-bulk-actions {
@@ -3643,20 +3562,22 @@ section.tab-content.active {
 }
 
 .refund-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 8px;
+    align-items: flex-start; /* prevent equal-height dependency */
 }
+
+/* Two columns on desktop, independent heights per card */
+.refund-row .refund-card { flex: 1 1 calc(50% - 4px); }
 
 .refund-row:last-child {
     margin-bottom: 0;
 }
 
 @media (max-width: 768px) {
-    .refund-row {
-        grid-template-columns: 1fr;
-    }
+    .refund-row .refund-card { flex-basis: 100%; }
 }
 
 .refund-card {
@@ -10885,4 +10806,542 @@ button.quick-btn.active:hover,
   min-width: 0 !important;
   max-width: 100% !important;
   overflow: hidden !important;
+}
+
+/* Edit Note Modal Styles */
+.edit-note-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-note-modal .modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.edit-note-modal .modal-content {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  z-index: 10001;
+}
+
+.dark .edit-note-modal .modal-content {
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+.edit-note-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dark .edit-note-modal .modal-header {
+  border-bottom-color: #374151;
+}
+
+.edit-note-modal .modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.dark .edit-note-modal .modal-header h3 {
+  color: #f9fafb;
+}
+
+.edit-note-modal .modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.edit-note-modal .modal-close:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dark .edit-note-modal .modal-close:hover {
+  background: #374151;
+  color: #f9fafb;
+}
+
+.edit-note-modal .modal-body {
+  padding: 24px;
+}
+
+.edit-note-modal .form-group {
+  margin-bottom: 16px;
+}
+
+.edit-note-modal .form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+.dark .edit-note-modal .form-label {
+  color: #d1d5db;
+}
+
+.edit-note-modal .form-input,
+.edit-note-modal .form-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.edit-note-modal .form-input:focus,
+.edit-note-modal .form-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark .edit-note-modal .form-input,
+.dark .edit-note-modal .form-textarea {
+  background: #374151;
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+
+.dark .edit-note-modal .form-input:focus,
+.dark .edit-note-modal .form-textarea:focus {
+  border-color: #3b82f6;
+}
+
+.edit-note-modal .form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.edit-note-modal .modal-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 0 24px 24px 24px;
+}
+
+.edit-note-modal .btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.edit-note-modal .btn-outline {
+  background: #f9fafb;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.edit-note-modal .btn-outline:hover {
+  background: #f3f4f6;
+}
+
+.dark .edit-note-modal .btn-outline {
+  background: #374151;
+  color: #d1d5db;
+  border-color: #4b5563;
+}
+
+.dark .edit-note-modal .btn-outline:hover {
+  background: #4b5563;
+}
+
+.edit-note-modal .btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.edit-note-modal .btn-primary:hover {
+  background: #2563eb;
+}
+
+/* Grid layout left-to-right with dense packing */
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-auto-flow: row dense;
+  gap: 16px;
+  padding: 16px;
+}
+
+.note-cardv3 {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 1200px) {
+  .notes-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .notes-grid { grid-template-columns: 1fr; }
+}
+/* end grid responsive rules */
+
+.note-cardv3 {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+  width: 100%;
+  flex: 1;
+}
+
+/* Pending cards: transparent border, gray background */
+.note-cardv3:not([data-type="note-thong-tin"]):not([data-type="completed"]) {
+  border: 1px solid transparent;
+  background: #e5e7eb; /* neutral subtle gray */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .note-cardv3:not([data-type="note-thong-tin"]):not([data-type="completed"]) {
+  border: 1px solid transparent;
+  background: #111827; /* even darker */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Pending cards - no special styling, use default border */
+
+/* Card colors - removed old styles */
+
+.note-cardv3:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.dark .note-cardv3 {
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+/* Override dark mode border colors for card types */
+.dark .note-cardv3[data-type="chua-xu-ly"] {
+  border-color: #f59e0b; /* Orange border for "Chưa xử lý" */
+}
+
+.dark .note-cardv3[data-type="note-thong-tin"] {
+  border-color: #3b82f6; /* Blue border for "Note thông tin" */
+}
+
+.dark .note-cardv3[data-type="completed"] {
+  border-color: #10b981; /* Green border for "Hoàn thành" */
+}
+
+.note-cardv3 .v3-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.note-cardv3 .v3-body {
+  margin-bottom: 12px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.note-cardv3 .v3-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.dark .note-cardv3 .v3-foot {
+  color: #9ca3af;
+}
+
+.note-cardv3 .v3-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.note-cardv3 .icon-btn {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: #f3f4f6;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.note-cardv3 .icon-btn:hover {
+  background: #e5e7eb;
+}
+
+.dark .note-cardv3 .icon-btn {
+  background: #374151;
+  color: #d1d5db;
+}
+
+.dark .note-cardv3 .icon-btn:hover {
+  background: #4b5563;
+}
+
+/* Card border colors - only for info and completed */
+.note-cardv3[data-type="note-thong-tin"] {
+  border-color: #3b82f6 !important; /* Blue border for "Note thông tin" */
+  border-width: 2px !important;
+}
+
+.note-cardv3[data-type="completed"] {
+  border-color: #10b981 !important; /* Green border for "Hoàn thành" */
+  border-width: 2px !important;
+}
+
+/* Dark mode card border colors */
+.dark .note-cardv3[data-type="note-thong-tin"] {
+  border-color: #3b82f6 !important; /* Blue border for "Note thông tin" */
+  border-width: 2px !important;
+}
+
+.dark .note-cardv3[data-type="completed"] {
+  border-color: #10b981 !important; /* Green border for "Hoàn thành" */
+  border-width: 2px !important;
+}
+
+/* Scientific Filter System */
+.scientific-filter {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.dark .scientific-filter {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border-color: #475569;
+}
+
+.filter-section {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.filter-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.dark .filter-label {
+  color: #94a3b8;
+}
+
+.filter-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-option {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.filter-option:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  transform: translateY(-1px);
+}
+
+.filter-option.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.dark .filter-option {
+  background: #374151;
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+
+.dark .filter-option:hover {
+  background: #4b5563;
+  border-color: #6b7280;
+}
+
+.dark .filter-option.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 120px;
+  transition: all 0.2s ease;
+}
+
+.filter-select:hover {
+  border-color: #9ca3af;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark .filter-select {
+  background: #374151;
+  border-color: #4b5563;
+  color: #d1d5db;
+}
+
+.dark .filter-select:hover {
+  border-color: #6b7280;
+}
+
+.dark .filter-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+@media (max-width: 768px) {
+  .filter-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+  
+  .filter-group {
+    min-width: auto;
+  }
+  
+  .filter-options {
+    justify-content: flex-start;
+  }
+}
+
+/* Filter responsive styles - removed */
+
+/* Radio buttons for note type */
+.edit-note-modal .note-type-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.edit-note-modal .radio-option {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.edit-note-modal .radio-option:hover {
+  background: #f3f4f6;
+}
+
+.dark .edit-note-modal .radio-option:hover {
+  background: #374151;
+}
+
+.edit-note-modal .radio-option input[type="radio"] {
+  margin: 0;
+  margin-right: 12px;
+  width: 16px;
+  height: 16px;
+  accent-color: #3b82f6;
+}
+
+.edit-note-modal .radio-label {
+  font-size: 14px;
+  color: #374151;
+  user-select: none;
+}
+
+.dark .edit-note-modal .radio-label {
+  color: #d1d5db;
+}
+
+/* Optimize form layout */
+.edit-note-modal .form-group {
+  margin-bottom: 12px;
+}
+
+.edit-note-modal .form-group:last-of-type {
+  margin-bottom: 16px;
+}
+
+.edit-note-modal .form-textarea {
+  min-height: 120px;
+  resize: vertical;
 }

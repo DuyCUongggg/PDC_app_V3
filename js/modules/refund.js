@@ -540,12 +540,15 @@ function calculateRefund(product, startDate, endDate) {
     }
 
     let totalDays = Number(product.duration) || 0;
-    const unit = product.durationUnit === 'tháng' ? 'tháng' : 'ngày';
+    const unit = product.durationUnit === 'tháng' ? 'tháng' : (product.durationUnit === 'năm' ? 'năm' : 'ngày');
     if (totalDays <= 0) totalDays = 1;
 
     if (unit === 'tháng') {
     // Cố định mỗi tháng = 30 ngày
     totalDays = totalDays * 30;
+} else if (unit === 'năm') {
+    // Cố định mỗi năm = 365 ngày
+    totalDays = totalDays * 365;
 }
     const daysUsed = Math.max(0, Math.floor((e - s) / (1000 * 3600 * 24)));
     const daysRemaining = Math.max(0, totalDays - daysUsed);
@@ -912,6 +915,8 @@ function createCustomerMessage(result) {
     return template
         .replace(/\{\{orderId\}\}/g, orderId || '-')
         .replace(/\{\{productName\}\}/g, result.product.name)
+        .replace(/\{\{productDuration\}\}/g, result.product.duration)
+        .replace(/\{\{productUnit\}\}/g, result.product.durationUnit)
         .replace(/\{\{startDate\}\}/g, startDate)
         .replace(/\{\{endDate\}\}/g, endDate)
         .replace(/\{\{daysRemaining\}\}/g, result.daysRemaining)
@@ -1289,17 +1294,30 @@ function parseRefundPatternA(text) {
 }
 
 function parseRefundPatternB(text) {
-    // Expected lines include: email, price, ORDER RESELLER, PAID, SUCCESS, dd/mm/yyyy hh:mm
     const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
-    
+
     if (lines.length < 4) return null;
 
-    // Find line containing RESELLER or long order code
-    const orderLine = lines.find(l => /RESELLER/i.test(l) || /[A-Z0-9]{6,}/.test(l));
-    
-    // Find date with dd/mm/yyyy optionally with time
-    const dateLine = lines.find(l => /(\d{2}\/\d{2}\/\d{4})/.test(l));
-    
+    // PRIORITY 1: Find line containing RESELLER
+    let orderLine = lines.find(l => /RESELLER/i.test(l));
+
+    // PRIORITY 2: If no RESELLER, find alphanumeric code BUT exclude email
+    if (!orderLine) {
+        orderLine = lines.find(l => {
+            // Exclude lines with @ (email)
+            if (l.includes('@')) return false;
+            // Exclude lines with ₫ (price)
+            if (l.includes('₫')) return false;
+            // Exclude status words
+            if (/^(PAID|SUCCESS|PENDING|FAILED)$/i.test(l)) return false;
+            // Must contain alphanumeric code
+            return /[A-Z0-9]{6,}/i.test(l);
+        });
+    }
+
+    // Find date with dd/mm/yyyy
+    const dateLine = lines.find(l => /\d{2}\/\d{2}\/\d{4}/.test(l));
+
     if (!orderLine || !dateLine) {
         return null;
     }
@@ -1307,8 +1325,10 @@ function parseRefundPatternB(text) {
     const orderId = orderLine.trim();
     const dateMatch = dateLine.match(/(\d{2}\/\d{2}\/\d{4})/);
     if (!dateMatch) return null;
+
     const [dd, mm, yyyy] = dateMatch[1].split('/');
     const iso = `${yyyy}-${mm}-${dd}`;
+
     return { orderId, purchaseDate: iso };
 }
 
@@ -1420,11 +1440,13 @@ window.clearRefundProduct = clearRefundProduct;
 window.clearRefundProductSelection = clearRefundProductSelection;
 window.clearRefundDates = clearRefundDates;
 
+
 function getDefaultTemplate() {
     return `Kính gửi Quý khách,
 
-Centrix xin thông tin kết quả hoàn tiền cho đơn {{orderId}} – gói {{productName}} như sau:
-- Khoảng thời gian tính: {{startDate}} → {{endDate}}
+Centrix xin thông tin kết quả hoàn tiền cho đơn {{productName}} {{productDuration}} {{productUnit}} như sau:
+- Mã đơn hàng: {{orderId}}
+- Khoảng thời gian dùng: {{startDate}} → {{endDate}}
 - Số ngày còn lại: {{daysRemaining}} ngày
 - Số tiền hoàn dự kiến: {{refund}}
 
@@ -1434,9 +1456,6 @@ Trân trọng.`;
 
 
 function getSavedTemplate() {
-    try {
-        return localStorage.getItem('refund_template') || getDefaultTemplate();
-    } catch {
-        return getDefaultTemplate();
-    }
+    // Always use default template from code, no localStorage
+    return getDefaultTemplate();
 }

@@ -21,7 +21,7 @@ window.selectTemplateProduct = selectTemplateProduct;
 function generateTemplate() {
     if (!selectedTemplateProduct) return showNotification('Vui lòng chọn sản phẩm!', 'error');
     const name = (document.getElementById('customerName')?.value || '').trim();
-    const p = selectedTemplateProduct, dur = p.durationUnit === 'tháng' ? `${p.duration} tháng` : `${p.duration} ngày`;
+    const p = selectedTemplateProduct, dur = p.durationUnit === 'tháng' ? `${p.duration} tháng` : (p.durationUnit === 'năm' ? `${p.duration} năm` : `${p.duration} ngày`);
     const msg = `${name ? `Chào ${name}!` : 'Chào bạn!'}\n\nGói: ${p.name}\nGiá: ${formatPrice(p.price)}đ\nThời hạn: ${dur}\n\n✨ TÍNH NĂNG:\n• Dễ dùng • Nhanh • Bảo mật\n\nNếu cần mình kích hoạt ngay trong ngày.`;
     document.getElementById('templateContent').textContent = msg;
     document.getElementById('templateResult').style.display = 'block';

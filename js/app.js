@@ -93,7 +93,7 @@
         appData.products = appData.products.map(p => {
             let duration = Number(p?.duration);
             if (!Number.isFinite(duration) || duration <= 0) duration = 1;
-            let unit = p?.durationUnit === 'ngày' || p?.durationUnit === 'tháng' ? p.durationUnit : 'tháng';
+            let unit = p?.durationUnit === 'ngày' || p?.durationUnit === 'tháng' || p?.durationUnit === 'năm' ? p.durationUnit : 'tháng';
             // Normalize legacy categories
             let category = p?.category === 'AI Services' ? 'AI' : (p?.category || '');
             return { ...p, duration, durationUnit: unit, category };
@@ -101,8 +101,15 @@
     }
 
     function parseDurationFromText(text) {
-        const m = String(text || '').match(/(\d{1,3})\s*(ngay|ngày|thang|tháng)/i);
-        if (m) return { duration: parseInt(m[1]) || 1, unit: /ngay|ngày/i.test(m[2]) ? 'ngày' : 'tháng' };
+        const m = String(text || '').match(/(\d{1,3})\s*(ngay|ngày|thang|tháng|nam|năm)/i);
+        if (m) {
+            const duration = parseInt(m[1]) || 1;
+            const unitText = m[2].toLowerCase();
+            let unit = 'tháng';
+            if (/ngay|ngày/i.test(unitText)) unit = 'ngày';
+            else if (/nam|năm/i.test(unitText)) unit = 'năm';
+            return { duration, unit };
+        }
         const n = parseInt(String(text || '').replace(/[^\d]/g, ''));
         return { duration: Number.isFinite(n) && n > 0 ? n : 0, unit: 'tháng' };
     }
@@ -122,9 +129,26 @@
     window.showNotification = showNotification;
 
     function createToast(message, type = 'success', duration = 3000) {
-        // Remove existing toasts
-        const existingToasts = document.querySelectorAll('.toast-notification');
-        existingToasts.forEach(toast => toast.remove());
+        // Ensure a single top-right container for stacking (prevent duplicates)
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            document.body.appendChild(container);
+        }
+
+        // Style container for vertical stacking (push down older toasts)
+        Object.assign(container.style, {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: '10px',
+            zIndex: '10000',
+            pointerEvents: 'none'
+        });
 
         // Create toast element
         const toast = document.createElement('div');
@@ -133,20 +157,17 @@
 
         // Add styles
         Object.assign(toast.style, {
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
             padding: '12px 20px',
             borderRadius: '8px',
             color: 'white',
             fontWeight: '500',
             fontSize: '14px',
-            zIndex: '10000',
-            maxWidth: '300px',
+            maxWidth: '320px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
             transform: 'translateX(100%)',
             transition: 'transform 0.3s ease, opacity 0.3s ease',
-            opacity: '0'
+            opacity: '0',
+            pointerEvents: 'auto'
         });
 
         // Set background color based on type
@@ -154,23 +175,31 @@
             toast.style.background = 'linear-gradient(135deg, #10b981, #059669)';
         } else if (type === 'error') {
             toast.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+        } else {
+            toast.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
         }
 
-        // Add to page
-        document.body.appendChild(toast);
+        // Add to container (prepend so new appears on top, pushing old down)
+        container.prepend(toast);
+
+        // Cap number of concurrent toasts
+        const MAX_TOASTS = 4;
+        while (container.children.length > MAX_TOASTS) {
+            container.lastElementChild && container.lastElementChild.remove();
+        }
 
         // Animate in
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             toast.style.transform = 'translateX(0)';
             toast.style.opacity = '1';
-        }, 10);
+        });
 
         // Auto remove
         setTimeout(() => {
             toast.style.transform = 'translateX(100%)';
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 300);
-        }, duration);
+        }, Math.max(1500, duration || 0));
     }
     function generateUUID() {
         try {
@@ -294,7 +323,7 @@
                         id: item.id || generateUUID(),
                         name: item.name || '',
                         duration,
-                        durationUnit: unit === 'ngày' || unit === 'tháng' ? unit : 'tháng',
+                        durationUnit: unit === 'ngày' || unit === 'tháng' || unit === 'năm' ? unit : 'tháng',
                         price: parseInt(item.price) || 0,
                         category: category,
                         note: actualNote
@@ -493,8 +522,8 @@
                 <td class="product-price">${formatPrice(p.price)}đ</td>
                 <td>
                     <div class="action-buttons">
-                        <button class="action-btn edit-btn" data-action="edit" data-product-name="${p.name}">Sửa</button>
-                        <button class="action-btn delete-btn" data-action="delete" data-product-name="${p.name}">Xóa</button>
+                        <button class="action-btn edit-btn" data-action="edit" data-product-id="${p.id}">Sửa</button>
+                        <button class="action-btn delete-btn" data-action="delete" data-product-id="${p.id}">Xóa</button>
                     </div>
                 </td>
             </tr>
@@ -541,7 +570,19 @@
             if (categorySelect) categorySelect.focus();
             return;
         }
-        const unit = (durationUnit === 'ngày' || durationUnit === 'tháng') ? durationUnit : 'tháng';
+        const unit = (durationUnit === 'ngày' || durationUnit === 'tháng' || durationUnit === 'năm') ? durationUnit : 'tháng';
+        
+        // Check for duplicate product (same name + duration + unit)
+        const existingProduct = appData.products.find(p => 
+            p.name.toLowerCase() === name.toLowerCase() && 
+            p.duration === duration && 
+            p.durationUnit === unit
+        );
+        
+        if (existingProduct) {
+            showNotification(`Sản phẩm "${name} ${duration} ${unit}" đã tồn tại!`, 'error');
+            return;
+        }
         
         const product = { id: generateUUID(), name, duration, durationUnit: unit, price, category };
         
@@ -597,13 +638,13 @@
         queueAutoSave();
     }
     
-    function deleteProduct(productName) {
+    function deleteProduct(productId) {
         // Show custom confirmation popup instead of browser confirm
-        showDeleteConfirmation(productName);
+        showDeleteConfirmation(productId);
     }
     
-    function showDeleteConfirmation(productName) {
-        const product = appData.products.find(p => p.name === productName);
+    function showDeleteConfirmation(productId) {
+        const product = appData.products.find(p => p.id === productId);
         if (!product) {
             showNotification('Không tìm thấy sản phẩm!', 'error');
             return;
@@ -626,7 +667,7 @@
             <!-- Content -->
             <div class="popup-content">
                 <p class="popup-text">
-                    Bạn có chắc chắn muốn xóa sản phẩm <strong>"${productName}"</strong>? 
+                    Bạn có chắc chắn muốn xóa sản phẩm <strong>"${product.name} ${product.duration} ${product.durationUnit}"</strong>? 
                     Hành động này không thể hoàn tác.
                 </p>
             </div>
@@ -634,7 +675,7 @@
             <!-- Buttons -->
             <div class="popup-buttons">
                 <button class="btn-cancel" onclick="closeDeleteConfirmation()">Hủy</button>
-                <button class="btn-confirm" onclick="confirmDeleteProduct('${productName}')">Xác nhận</button>
+                <button class="btn-confirm" onclick="confirmDeleteProduct('${productId}')">Xác nhận</button>
             </div>
         `;
         
@@ -728,8 +769,8 @@
         }
     }
     
-    function confirmDeleteProduct(productName) {
-        const productIndex = appData.products.findIndex(p => p.name === productName);
+    function confirmDeleteProduct(productId) {
+        const productIndex = appData.products.findIndex(p => p.id === productId);
         if (productIndex === -1) {
             showNotification('Không tìm thấy sản phẩm!', 'error');
             return;
@@ -747,8 +788,8 @@
         queueAutoSave();
     }
     
-    function editProduct(productName) {
-        const product = appData.products.find(p => p.name === productName);
+    function editProduct(productId) {
+        const product = appData.products.find(p => p.id === productId);
         if (!product) {
             showNotification('Không tìm thấy sản phẩm!', 'error');
             return;
@@ -775,14 +816,14 @@
         if (!button) return;
 
         const action = button.getAttribute('data-action');
-        const productName = button.getAttribute('data-product-name');
+        const productId = button.getAttribute('data-product-id');
         const buttonText = button.textContent.trim();
 
 
         if (action === 'edit') {
-            editProduct(productName);
+            editProduct(productId);
         } else if (action === 'delete') {
-            deleteProduct(productName);
+            deleteProduct(productId);
         }
     }
 
@@ -830,7 +871,20 @@
         if (!newName) { showNotification('Nhập tên sản phẩm!', 'error'); return; }
         if (!Number.isFinite(newDuration) || newDuration <= 0) newDuration = 1;
         if (!newPrice || newPrice <= 0) { showNotification('Nhập giá hợp lệ!', 'error'); return; }
-        const unit = (newUnit === 'ngày' || newUnit === 'tháng') ? newUnit : 'tháng';
+        const unit = (newUnit === 'ngày' || newUnit === 'tháng' || newUnit === 'năm') ? newUnit : 'tháng';
+        
+        // Check for duplicate product (same name + duration + unit) excluding current product
+        const existingProduct = appData.products.find(existingP => 
+            existingP.id !== p.id && 
+            existingP.name.toLowerCase() === newName.toLowerCase() && 
+            existingP.duration === newDuration && 
+            existingP.durationUnit === unit
+        );
+        
+        if (existingProduct) {
+            showNotification(`Sản phẩm "${newName} ${newDuration} ${unit}" đã tồn tại!`, 'error');
+            return;
+        }
         
         p.name = newName;
         p.duration = newDuration;
@@ -1211,19 +1265,20 @@
         } catch {}
     }
 
-    // Simple toast notifications
-    function showToast(message, type = 'success') {
-        try {
-            const container = document.getElementById('toastContainer');
-            if (!container) return;
-            const el = document.createElement('div');
-            el.className = `toast ${type}`;
-            el.textContent = message;
-            container.appendChild(el);
-            setTimeout(() => { el.remove(); }, 2500);
-        } catch {}
+    // Unified toast API used across modules (maps to createToast)
+    function showToast(message, type = 'success', duration = 3000) {
+        const normalized = (type === 'warning') ? 'error' : (type || 'success');
+        createToast(message, normalized, duration);
     }
     window.showToast = showToast;
+
+    // Global notification alias for consistency
+    try {
+        window.showNotification = function(message, type = 'success', duration = 3000) {
+            const normalized = (type === 'warning' || type === 'info') ? 'success' : (type || 'success');
+            createToast(message, normalized, duration);
+        };
+    } catch {}
 
     function openSidebar() {
         const sb = document.getElementById('sidebar');
