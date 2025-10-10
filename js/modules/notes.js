@@ -4,6 +4,11 @@
 if (!window.appData) window.appData = {};
 if (!window.appData.notes) window.appData.notes = [];
 
+// Enhanced backup and stability mechanisms
+const BACKUP_KEY = 'pdc_notes_backup';
+const BACKUP_RETENTION_DAYS = 7;
+const MAX_BACKUP_COUNT = 5;
+
 // Debounce/guard for fetch to prevent spam
 let _notesSyncInFlight = false;
 let _lastNotesFetchAt = 0;
@@ -11,6 +16,10 @@ const NOTES_FETCH_MIN_INTERVAL_MS = 30000; // 30s - reduced sync frequency
 let _notesSyncInterval = null;
 let _notesRetryCount = 0;
 const MAX_RETRY_COUNT = 3;
+
+// Data integrity flags
+let _dataIntegrityCheck = false;
+let _lastBackupTime = 0;
 
 (function initNotes() {
     // Load notes from localStorage on init
@@ -30,8 +39,8 @@ const MAX_RETRY_COUNT = 3;
     // Start automatic periodic sync (reduced frequency)
     startPeriodicSync();
     
-    // Clean up deleted notes on startup
-    try { cleanupDeletedNotes(); } catch (e) { /* Handle error silently */ }
+    // Clean up deleted notes on startup - DISABLED TO PREVENT DATA LOSS
+    // try { cleanupDeletedNotes(); } catch (e) { /* Handle error silently */ }
 })();
 
 // Switch between list and add views
@@ -58,8 +67,11 @@ function generateNoteId() {
     return 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-// Create new note
+// Create new note with enhanced stability
 function createNote() {
+    // Auto-backup before creating new note
+    autoBackup();
+    
     const noteContent = document.getElementById('noteContent')?.value.trim();
     const tagSelect = document.getElementById('noteTagSelect');
     const selectedTag = (tagSelect?.value || '').trim();
@@ -123,7 +135,7 @@ function createNote() {
         .join(',');
     if (!tags) tags = '';
 
-    // Create note object
+    // Create note object with enhanced validation
     const note = {
         id: generateNoteId(),
         chatLink: chatLink,
@@ -133,26 +145,39 @@ function createNote() {
         status: 'active',
         tags,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        // Add integrity markers
+        _localVersion: 1,
+        _lastModified: Date.now()
     };
     
-    // Add to notes array
-    window.appData.notes.unshift(note); // Add to beginning
-    
-    // Clear form
-    clearNoteForm();
-    
-    // Re-render list
-    renderNotesList();
-    renderNotesCategories();
-    
-    // Save to localStorage
-    saveNotesToStorage();
-    // Fire-and-forget sync to Google Sheets for real-time-ish persistence
-    try { syncNotesToGoogleSheets(); } catch (e) { /* Handle error silently */ }
-    
-    // Giảm bớt thông báo: chỉ báo thành công khi tạo
-    showNotification('Đã tạo ghi chú!', 'success');
+    try {
+        // Add to notes array
+        window.appData.notes.unshift(note); // Add to beginning
+        
+        // Clear form
+        clearNoteForm();
+        
+        // Re-render list
+        renderNotesList();
+        renderNotesCategories();
+        
+        // Save to localStorage with backup
+        saveNotesToStorage();
+        
+        // Sync to Google Sheets with retry mechanism
+        syncNotesToGoogleSheetsWithRetry();
+        
+        showNotification('Đã tạo ghi chú!', 'success');
+    } catch (error) {
+        console.error('Create note failed:', error);
+        // Restore from backup if creation failed
+        if (restoreFromBackup(0)) {
+            showNotification('Đã khôi phục dữ liệu sau lỗi!', 'warning');
+        } else {
+            showNotification('Lỗi khi tạo ghi chú!', 'error');
+        }
+    }
 }
 window.createNote = createNote;
 
@@ -562,7 +587,79 @@ function saveNotesToStorage() {
     }
 }
 
-// Load notes from localStorage
+// Enhanced backup system
+function createBackup() {
+    try {
+        const backup = {
+            timestamp: Date.now(),
+            notes: JSON.parse(JSON.stringify(window.appData.notes || [])),
+            version: '1.0'
+        };
+        
+        // Get existing backups
+        const existingBackups = JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]');
+        
+        // Add new backup
+        existingBackups.unshift(backup);
+        
+        // Keep only recent backups
+        const cutoffTime = Date.now() - (BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const filteredBackups = existingBackups
+            .filter(b => b.timestamp > cutoffTime)
+            .slice(0, MAX_BACKUP_COUNT);
+        
+        localStorage.setItem(BACKUP_KEY, JSON.stringify(filteredBackups));
+        _lastBackupTime = Date.now();
+        
+        console.log(`📦 Backup created: ${backup.notes.length} notes`);
+    } catch (error) {
+        console.error('Backup failed:', error);
+    }
+}
+
+// Restore from backup
+function restoreFromBackup(backupIndex = 0) {
+    try {
+        const backups = JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]');
+        if (backups.length === 0) {
+            showNotification('Không có bản sao lưu nào!', 'error');
+            return false;
+        }
+        
+        const backup = backups[backupIndex];
+        if (!backup || !backup.notes) {
+            showNotification('Bản sao lưu không hợp lệ!', 'error');
+            return false;
+        }
+        
+        // Confirm restore
+        if (!confirm(`Khôi phục từ bản sao lưu ngày ${new Date(backup.timestamp).toLocaleString()}?\n\nSẽ ghi đè dữ liệu hiện tại!`)) {
+            return false;
+        }
+        
+        window.appData.notes = backup.notes;
+        renderNotesList();
+        renderNotesCategories();
+        saveNotesToStorage();
+        
+        showNotification(`Đã khôi phục ${backup.notes.length} ghi chú!`, 'success');
+        return true;
+    } catch (error) {
+        console.error('Restore failed:', error);
+        showNotification('Khôi phục thất bại!', 'error');
+        return false;
+    }
+}
+
+// Auto-backup before risky operations
+function autoBackup() {
+    const now = Date.now();
+    if (now - _lastBackupTime > 300000) { // 5 minutes
+        createBackup();
+    }
+}
+
+// Load notes from localStorage with backup support
 function loadNotesFromStorage() {
     try {
         const saved = localStorage.getItem('pdc_app_data');
@@ -570,11 +667,22 @@ function loadNotesFromStorage() {
             const parsed = JSON.parse(saved);
             if (parsed.notes && Array.isArray(parsed.notes)) {
                 window.appData.notes = parsed.notes;
+                _dataIntegrityCheck = true;
             }
         }
+        
+        // Create initial backup if none exists
+        if (window.appData.notes.length > 0) {
+            autoBackup();
+        }
     } catch (error) {
-        // Handle error silently
+        console.error('Load notes failed:', error);
         window.appData.notes = [];
+        
+        // Try to restore from backup
+        if (restoreFromBackup(0)) {
+            showNotification('Đã khôi phục từ bản sao lưu!', 'success');
+        }
     }
 }
 
@@ -782,39 +890,137 @@ function showSyncIndicator(message) { /* unified toast system handles user-visib
 
 function hideSyncIndicator() { /* no-op (avoid duplicate overlays) */ }
 
-// Clean up notes that no longer exist in Google Sheets
+// Enhanced cleanup with conflict resolution
 async function cleanupDeletedNotes() {
     try {
         const base = (window.GAS_URL || '');
-        if (!base) return;
+        if (!base) {
+            showNotification('Không thể kết nối đến server!', 'error');
+            return;
+        }
+        
+        // Create backup before cleanup
+        createBackup();
         
         const url = base + '?action=notesList&token=' + encodeURIComponent(window.GAS_TOKEN || '');
         const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) {
+            showNotification('Lỗi kết nối server!', 'error');
+            return;
+        }
         
         const data = await res.json();
-        if (!data || !data.success || !Array.isArray(data.data)) return;
+        if (!data || !data.success || !Array.isArray(data.data)) {
+            showNotification('Dữ liệu server không hợp lệ!', 'error');
+            return;
+        }
         
         const sheetNoteIds = new Set(data.data.map(n => n.id));
         const localNotes = window.appData.notes || [];
         const notesToKeep = localNotes.filter(note => sheetNoteIds.has(note.id));
+        const notesToDelete = localNotes.length - notesToKeep.length;
         
-        if (notesToKeep.length !== localNotes.length) {
+        if (notesToDelete > 0) {
+            // Show detailed warning with note preview
+            const deletedNotes = localNotes.filter(note => !sheetNoteIds.has(note.id));
+            const preview = deletedNotes.slice(0, 3).map(n => `• ${n.content.substring(0, 50)}...`).join('\n');
+            const moreText = deletedNotes.length > 3 ? `\n... và ${deletedNotes.length - 3} ghi chú khác` : '';
+            
+            if (!confirm(`⚠️ CẢNH BÁO: Sẽ xóa ${notesToDelete} ghi chú không có trong Google Sheets.\n\n${preview}${moreText}\n\nBạn có chắc muốn tiếp tục?`)) {
+                return;
+            }
+            
+            // Perform cleanup
             window.appData.notes = notesToKeep;
             renderNotesList();
             renderNotesCategories();
             saveNotesToStorage();
-            // Cleanup completed silently
+            showNotification(`Đã xóa ${notesToDelete} ghi chú!`, 'warning');
+        } else {
+            showNotification('Không có ghi chú nào cần dọn dẹp!', 'success');
         }
     } catch (e) {
-        // Handle error silently
+        console.error('Cleanup failed:', e);
+        showNotification('Lỗi khi dọn dẹp!', 'error');
+    }
+}
+
+// Enhanced sync with retry mechanism
+async function syncNotesToGoogleSheetsWithRetry() {
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+        try {
+            await syncNotesToGoogleSheets();
+            _notesRetryCount = 0; // Reset on success
+            return true;
+        } catch (error) {
+            retryCount++;
+            console.warn(`Sync attempt ${retryCount} failed:`, error);
+            
+            if (retryCount < maxRetries) {
+                // Wait before retry (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            } else {
+                console.error('All sync attempts failed');
+                showNotification('Đồng bộ thất bại! Dữ liệu đã được lưu local.', 'warning');
+                return false;
+            }
+        }
+    }
+}
+
+// Enhanced data validation
+function validateNoteData(note) {
+    if (!note || typeof note !== 'object') return false;
+    
+    const requiredFields = ['id', 'content', 'status', 'createdAt', 'updatedAt'];
+    for (const field of requiredFields) {
+        if (!note[field]) return false;
+    }
+    
+    // Validate dates
+    if (isNaN(new Date(note.createdAt).getTime()) || 
+        isNaN(new Date(note.updatedAt).getTime())) {
+        return false;
+    }
+    
+    return true;
+}
+
+// Enhanced save with validation
+function saveNotesToStorage() {
+    try {
+        // Validate all notes before saving
+        const validNotes = window.appData.notes.filter(validateNoteData);
+        
+        if (validNotes.length !== window.appData.notes.length) {
+            console.warn(`Filtered out ${window.appData.notes.length - validNotes.length} invalid notes`);
+            window.appData.notes = validNotes;
+        }
+        
+        const data = {
+            notes: window.appData.notes,
+            lastSaved: Date.now(),
+            version: '1.1'
+        };
+        
+        localStorage.setItem('pdc_app_data', JSON.stringify(data));
+        
+        // Create backup after successful save
+        autoBackup();
+        
+    } catch (error) {
+        console.error('Save failed:', error);
+        showNotification('Lỗi lưu dữ liệu!', 'error');
     }
 }
 
 // Utilities to control from UI/Console if needed
 window.syncNotesNow = async function() { 
     await refreshNotesFromSheets(true); 
-    await syncNotesToGoogleSheets(); 
+    await syncNotesToGoogleSheetsWithRetry(); 
 };
 window.clearNotesCache = function() { 
     try { 
@@ -824,6 +1030,8 @@ window.clearNotesCache = function() {
     } catch {} 
 };
 window.cleanupNotes = cleanupDeletedNotes;
+window.createBackup = createBackup;
+window.restoreFromBackup = restoreFromBackup;
 
 // Toggle additional fields based on note tag selection
 function toggleNoteFields() {

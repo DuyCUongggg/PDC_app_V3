@@ -922,12 +922,8 @@ class UpgradeManager {
         const normalized = (unit || '').toLowerCase();
         if (normalized === 'ngày') return dur;
         if (normalized === 'tháng') {
-            // Calendar-accurate: add months from baseDate and diff in days
-            const s = baseDate ? new Date(baseDate) : new Date();
-            const msPerDay = 24 * 60 * 60 * 1000;
-            const start = new Date(Date.UTC(s.getFullYear(), s.getMonth(), s.getDate()));
-            const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + dur, start.getUTCDate()));
-            return Math.max(1, Math.floor((end - start) / msPerDay));
+            // Cố định mỗi tháng = 30 ngày (nhất quán với refund module)
+            return Math.max(1, dur * 30);
         }
         if (normalized === 'năm') return Math.max(1, dur * 365);
         return Math.max(0, dur);

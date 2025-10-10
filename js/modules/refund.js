@@ -1033,7 +1033,7 @@ function getSelectedRefundProduct() {
     return selectedRefundProduct || null;
 }
 
-// Calculate product expiry date based on duration
+// Calculate product expiry date based on duration (nhất quán với logic 30 ngày/tháng)
 function calculateProductExpiryDate(product, startDate) {
     if (!product || !product.duration || !product.durationUnit) return null;
     
@@ -1049,10 +1049,12 @@ function calculateProductExpiryDate(product, startDate) {
             expiryDate.setDate(expiryDate.getDate() + duration);
             break;
         case 'tháng':
-            expiryDate.setMonth(expiryDate.getMonth() + duration);
+            // Cố định mỗi tháng = 30 ngày (nhất quán với logic tính toán)
+            expiryDate.setDate(expiryDate.getDate() + (duration * 30));
             break;
         case 'năm':
-            expiryDate.setFullYear(expiryDate.getFullYear() + duration);
+            // Cố định mỗi năm = 365 ngày
+            expiryDate.setDate(expiryDate.getDate() + (duration * 365));
             break;
         default:
             return null;
