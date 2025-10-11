@@ -12,14 +12,11 @@ const MAX_BACKUP_COUNT = 5;
 // Debounce/guard for fetch to prevent spam
 let _notesSyncInFlight = false;
 let _lastNotesFetchAt = 0;
-const NOTES_FETCH_MIN_INTERVAL_MS = 30000; // 30s - reduced sync frequency
+const NOTES_FETCH_MIN_INTERVAL_MS = 10000; // 10s - improved real-time sync
 let _notesSyncInterval = null;
 let _notesRetryCount = 0;
 const MAX_RETRY_COUNT = 3;
 
-// Data integrity flags
-let _dataIntegrityCheck = false;
-let _lastBackupTime = 0;
 
 (function initNotes() {
     // Load notes from localStorage on init
@@ -39,8 +36,6 @@ let _lastBackupTime = 0;
     // Start automatic periodic sync (reduced frequency)
     startPeriodicSync();
     
-    // Clean up deleted notes on startup - DISABLED TO PREVENT DATA LOSS
-    // try { cleanupDeletedNotes(); } catch (e) { /* Handle error silently */ }
 })();
 
 // Switch between list and add views
@@ -168,6 +163,11 @@ function createNote() {
         // Sync to Google Sheets with retry mechanism
         syncNotesToGoogleSheetsWithRetry();
         
+        // Trigger immediate real-time sync
+        setTimeout(() => {
+            try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
+        }, 1000);
+        
         showNotification('Đã tạo ghi chú!', 'success');
     } catch (error) {
         console.error('Create note failed:', error);
@@ -264,6 +264,11 @@ async function completeNote(noteId) {
     } catch (e) {
         // Không spam cảnh báo; để auto-sync xử lý
     }
+    
+    // Trigger immediate real-time sync
+    setTimeout(() => {
+        try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
+    }, 1000);
 }
 window.completeNote = completeNote;
 
@@ -690,8 +695,10 @@ function loadNotesFromStorage() {
 function updateNotesTab() {
     renderNotesList();
     renderNotesCategories();
-    // Pull latest when user switches to Notes tab
-    try { refreshNotesFromSheets(); } catch {}
+    // Pull latest when user switches to Notes tab with real-time sync
+    try { 
+        refreshNotesFromSheets(true); // Force refresh for real-time experience
+    } catch {}
 }
 window.updateNotesTab = updateNotesTab;
 
@@ -701,14 +708,14 @@ function startPeriodicSync() {
         clearInterval(_notesSyncInterval);
     }
     
-    // Sync every 2 minutes (reduced frequency)
+    // Sync every 30 seconds for better real-time experience
     _notesSyncInterval = setInterval(async () => {
         try {
             await refreshNotesFromSheets(false); // Silent sync
         } catch (e) {
             // Handle error silently
         }
-    }, 120000);
+    }, 30000);
 }
 
 // Stop periodic sync
@@ -885,10 +892,6 @@ function normalizeNotes() {
     } catch {}
 }
 
-// Sync indicator functions
-function showSyncIndicator(message) { /* unified toast system handles user-visible messages */ }
-
-function hideSyncIndicator() { /* no-op (avoid duplicate overlays) */ }
 
 // Enhanced cleanup with conflict resolution
 async function cleanupDeletedNotes() {
@@ -1142,6 +1145,11 @@ function confirmDeleteNote() {
             // Handle error silently
         }
         
+        // Trigger immediate real-time sync
+        setTimeout(() => {
+            try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
+        }, 1000);
+        
         showNotification('Đã xóa note!', 'success');
         
         // Close modal
@@ -1251,7 +1259,6 @@ function showNotification(message, type = 'info', title = '') {
     } catch {}
 }
 
-// Functions are already exported above, removing duplicate exports
 
 // Add event listener for modal overlay click
 document.addEventListener('DOMContentLoaded', function() {
@@ -1476,6 +1483,11 @@ function saveEditNote(noteId) {
     // Sync to Google Sheets
     try { syncNotesToGoogleSheets(); } catch (e) { /* Handle error silently */ }
     
+    // Trigger immediate real-time sync
+    setTimeout(() => {
+        try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
+    }, 1000);
+    
     showNotification('Đã cập nhật ghi chú!', 'success');
 }
 window.saveEditNote = saveEditNote;
@@ -1507,11 +1519,6 @@ function formatNoteDateDetailed(dateString) {
     });
 }
 
-// Filter system - removed
-
-// Filter functions - removed
-
-// Filter render functions - removed
 // Scientific Filter System
 let currentStatusFilter = 'pending';
 let currentTimeFilter = 'all';
@@ -1542,9 +1549,8 @@ function applyScientificFilter() {
     // Apply time filter
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(today);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
     
     filteredNotes = filteredNotes.filter(note => {
         const noteDate = new Date(note.createdAt);
@@ -1553,10 +1559,8 @@ function applyScientificFilter() {
         switch (currentTimeFilter) {
             case 'today':
                 return noteDay.getTime() === today.getTime();
-            case 'week':
-                return noteDate >= weekStart;
-            case 'month':
-                return noteDate >= monthStart;
+            case 'yesterday':
+                return noteDay.getTime() === yesterday.getTime();
             default:
                 return true;
         }
@@ -1730,11 +1734,3 @@ function relayoutNotesGrid() {
 
 // Recompute after renders and on resize
 window.addEventListener('resize', () => requestAnimationFrame(relayoutNotesGrid));
-const _origRender = window.renderNotesList;
-window.renderNotesList = function() {
-    _origRender();
-    requestAnimationFrame(relayoutNotesGrid);
-};
-
-// (no extra override for filtered render)
-

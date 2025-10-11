@@ -1196,6 +1196,9 @@
         if (mainContent) {
             mainContent.classList.add('fade-in');
         }
+        
+        // Initialize real-time refund calculation listeners
+        initRefundRealTimeListeners();
     });
     function updateTabs() { 
         if (typeof updateTemplateTab === 'function') updateTemplateTab(); 
@@ -1573,13 +1576,80 @@
     
     function updateRefundCalculation() {
         // Auto-calculate refunds when dates or products change
-        const startDate = document.getElementById('startDate');
-        const endDate = document.getElementById('endDate');
+        // Check for valid date range in either card
+        const purchaseStartDate = document.getElementById('purchaseStartDate')?.value;
+        const purchaseEndDate = document.getElementById('purchaseEndDate')?.value;
+        const refundStartDate = document.getElementById('refundStartDate')?.value;
+        const refundEndDate = document.getElementById('refundEndDate')?.value;
         
-        if (startDate && endDate && (startDate.value && endDate.value)) {
+        // Check if we have dates in either card
+        const hasCard1Dates = purchaseStartDate && purchaseEndDate;
+        const hasCard2Dates = refundStartDate && refundEndDate;
+        
+        if (hasCard1Dates || hasCard2Dates) {
             // Add real-time calculation logic here
             calculateRefundRealTime();
         }
+    }
+    
+    // Real-time refund calculation function
+    function calculateRefundRealTime() {
+        // Check if we're in refund tab and have selected product
+        if (typeof selectedRefundProduct !== 'undefined' && selectedRefundProduct) {
+            // Get current date values from the form
+            const purchaseStartDate = document.getElementById('purchaseStartDate')?.value;
+            const purchaseEndDate = document.getElementById('purchaseEndDate')?.value;
+            const refundStartDate = document.getElementById('refundStartDate')?.value;
+            const refundEndDate = document.getElementById('refundEndDate')?.value;
+            
+            let startDate, endDate;
+            
+            // Check Card 1: Từ ngày mua → Đến ngày hoàn
+            if (purchaseStartDate && purchaseEndDate) {
+                startDate = purchaseStartDate;
+                endDate = purchaseEndDate;
+            }
+            // Check Card 2: Từ ngày hoàn → Đến ngày hết gói
+            else if (refundStartDate && refundEndDate) {
+                startDate = refundStartDate;
+                endDate = refundEndDate;
+            }
+            
+            if (startDate && endDate) {
+                // Use the existing calculateRefund function from refund.js
+                if (typeof calculateRefund === 'function') {
+                    const result = calculateRefund(selectedRefundProduct, startDate, endDate);
+                    if (result && !result.error) {
+                        // Update the display in real-time
+                        if (typeof displayRefundResult === 'function') {
+                            displayRefundResult(result);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add event listeners for real-time calculation
+    function initRefundRealTimeListeners() {
+        // Add listeners to date inputs for real-time calculation
+        const dateInputs = [
+            'purchaseStartDate', 'purchaseEndDate', 
+            'refundStartDate', 'refundEndDate'
+        ];
+        
+        dateInputs.forEach(inputId => {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.addEventListener('change', () => {
+                    // Debounce the calculation to avoid too many calls
+                    clearTimeout(window._refundRealTimeTimeout);
+                    window._refundRealTimeTimeout = setTimeout(() => {
+                        calculateRefundRealTime();
+                    }, 500);
+                });
+            }
+        });
     }
     
     
@@ -1590,6 +1660,8 @@
     window.showComboRefundOptions = showComboRefundOptions;
     window.hideComboRefundSection = hideComboRefundSection;
     window.clearComboRefundSelection = clearComboRefundSelection;
+    window.calculateRefundRealTime = calculateRefundRealTime;
+    window.initRefundRealTimeListeners = initRefundRealTimeListeners;
     // restartRefundForm is defined in refund.js
     
     // Edit combo functions

@@ -42,11 +42,16 @@ function setupRefundEventListeners() {
         searchInput.addEventListener('keydown', handleRefundSearchKeydown);
     }
     
-    // Date inputs
-    const startDate = document.getElementById('startDate');
-    const endDate = document.getElementById('endDate');
-    if (startDate) startDate.addEventListener('change', updateRefundState);
-    if (endDate) endDate.addEventListener('change', updateRefundState);
+    // Date inputs - Updated to use correct IDs
+    const purchaseStartDate = document.getElementById('purchaseStartDate');
+    const purchaseEndDate = document.getElementById('purchaseEndDate');
+    const refundStartDate = document.getElementById('refundStartDate');
+    const refundEndDate = document.getElementById('refundEndDate');
+    
+    if (purchaseStartDate) purchaseStartDate.addEventListener('change', updateRefundState);
+    if (purchaseEndDate) purchaseEndDate.addEventListener('change', updateRefundState);
+    if (refundStartDate) refundStartDate.addEventListener('change', updateRefundState);
+    if (refundEndDate) refundEndDate.addEventListener('change', updateRefundState);
     
     // Calculate button
     const calculateBtn = document.getElementById('refundBtn');
@@ -490,6 +495,11 @@ function updateRefundState() {
 
    if (isFullInfo && selectedRefundProduct && selectedRefundProduct.id) {
     calculateBtn.disabled = false;
+    
+    // Trigger real-time calculation if available
+    if (typeof calculateRefundRealTime === 'function') {
+        calculateRefundRealTime();
+    }
 } else {
     calculateBtn.disabled = true;
 }
@@ -1461,3 +1471,7 @@ function getSavedTemplate() {
     // Always use default template from code, no localStorage
     return getDefaultTemplate();
 }
+
+// Export functions for use in other modules
+window.calculateRefund = calculateRefund;
+window.displayRefundResult = displayRefundResult;
