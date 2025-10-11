@@ -682,11 +682,15 @@ function loadNotesFromStorage() {
         }
     } catch (error) {
         console.error('Load notes failed:', error);
-        window.appData.notes = [];
-        
-        // Try to restore from backup
+        // ⚠️ DISABLED: Do NOT clear notes on load error
+        // Keep existing notes safe and try to restore from backup
         if (restoreFromBackup(0)) {
             showNotification('Đã khôi phục từ bản sao lưu!', 'success');
+        } else {
+            // Only clear if no backup available and no existing notes
+            if (!window.appData.notes || window.appData.notes.length === 0) {
+                window.appData.notes = [];
+            }
         }
     }
 }
@@ -821,17 +825,9 @@ async function refreshNotesFromSheets(force = false) {
         });
         
         if (incoming.length === 0) {
-            // Endpoint returned empty notes. If local notes look invalid (no orderCode & no content), clear them.
-            const current = Array.isArray(window.appData.notes) ? window.appData.notes : [];
-            const allInvalid = current.length > 0 && current.every(n => !n || (!n.orderCode && !n.content));
-            if (allInvalid) {
-                window.appData.notes = [];
-                renderNotesList();
-                saveNotesToStorage();
-                if (force) {
-                // No notes to sync
-                }
-            }
+            // ⚠️ DISABLED: Do NOT clear local notes when server returns empty
+            // This can happen due to network errors or API issues
+            // Keep local notes safe and wait for next sync
             return;
         }
         
@@ -1027,9 +1023,12 @@ window.syncNotesNow = async function() {
 };
 window.clearNotesCache = function() { 
     try { 
-        localStorage.removeItem('pdc_app_data'); 
-        // Cache cleared, reloading 
-        setTimeout(() => location.reload(), 300); 
+        // ⚠️ WARNING: This will clear ALL notes data!
+        if (confirm('⚠️ CẢNH BÁO: Thao tác này sẽ xóa TẤT CẢ ghi chú!\n\nBạn có chắc chắn muốn tiếp tục?')) {
+            localStorage.removeItem('pdc_app_data'); 
+            // Cache cleared, reloading 
+            setTimeout(() => location.reload(), 300); 
+        }
     } catch {} 
 };
 window.cleanupNotes = cleanupDeletedNotes;
