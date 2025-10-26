@@ -9,13 +9,17 @@ const BACKUP_KEY = 'pdc_notes_backup';
 const BACKUP_RETENTION_DAYS = 7;
 const MAX_BACKUP_COUNT = 5;
 
-// Debounce/guard for fetch to prevent spam
-let _notesSyncInFlight = false;
-let _lastNotesFetchAt = 0;
-const NOTES_FETCH_MIN_INTERVAL_MS = 10000; // 10s - improved real-time sync
-let _notesSyncInterval = null;
-let _notesRetryCount = 0;
-const MAX_RETRY_COUNT = 3;
+// Auto-save debounce helper (EXACTLY like products)
+let _notesAutoSaveTimer = null;
+
+// Backup variables
+let _lastBackupTime = 0;
+let _dataIntegrityCheck = false;
+
+// Pagination variables
+let _notesCurrentPage = 1;
+let _notesPerPage = 10;
+let _notesTotalPages = 1;
 
 
 (function initNotes() {
@@ -28,13 +32,21 @@ const MAX_RETRY_COUNT = 3;
     loadSavedTagColors();
     renderSavedTagsUI();
     populateTagSelect();
+    
+    // Auto load from Google Sheets on startup (EXACTLY like products)
+    
+    // Render ngay với dữ liệu local để tránh flicker
+    renderNotesList();
+    renderNotesCategories();
+    
+    // Sau đó tải từ database trong background
+    loadNotesFromGoogleSheets().then(() => {
+    }).catch((error) => {
+    });
     // Initialize note form
     initNoteForm();
-    // Try to pull latest from Google Sheets (Sheet2)
-    try { scheduleRefreshNotes(0); } catch (e) { /* Handle error silently */ }
     
-    // Start automatic periodic sync (reduced frequency)
-    startPeriodicSync();
+    // No complex sync - just like products
     
 })();
 
@@ -160,19 +172,14 @@ function createNote() {
         // Save to localStorage with backup
         saveNotesToStorage();
         
-        // Sync to Google Sheets with retry mechanism
-        syncNotesToGoogleSheetsWithRetry();
+        // Auto-sync to Google Sheets (like products)
+        queueNotesAutoSave();
         
-        // Trigger immediate real-time sync
-        setTimeout(() => {
-            try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
-        }, 1000);
-        
-        showNotification('Đã tạo ghi chú!', 'success');
+        // Chỉ hiển thị thông báo ngắn gọn
+        showNotification('Đã tạo ghi chú!', 'success', 2000);
     } catch (error) {
-        console.error('Create note failed:', error);
-        // Restore from backup if creation failed
-        if (restoreFromBackup(0)) {
+        // Restore from backup if creation failed (skip confirmation)
+        if (restoreFromBackup(0, true)) {
             showNotification('Đã khôi phục dữ liệu sau lỗi!', 'warning');
         } else {
             showNotification('Lỗi khi tạo ghi chú!', 'error');
@@ -272,6 +279,42 @@ async function completeNote(noteId) {
 }
 window.completeNote = completeNote;
 
+// Deprecate note (không dùng nữa) - chỉ cho note thông tin
+function deprecateNote(noteId) {
+    
+    const note = window.appData.notes.find(n => n.id === noteId);
+    if (!note) {
+        showNotification('Không tìm thấy ghi chú!', 'error');
+        return;
+    }
+    
+    
+    // Chỉ cho phép với note thông tin
+    const isInfoNote = (note.tags || '').includes('note-thong-tin');
+    if (!isInfoNote) {
+        showNotification('Chỉ có thể đánh dấu "không dùng nữa" cho note thông tin!', 'error');
+        return;
+    }
+    
+    // Đánh dấu như hoàn thành (giống nút hoàn thành)
+    note.status = 'đã hoàn thành';
+    note.completedAt = new Date().toISOString();
+    
+    
+    // Update UI
+    renderNotesList();
+    renderNotesCategories();
+    saveNotesToStorage();
+    
+    // Thông báo thành công
+    showNotification('Đã đánh dấu "không dùng nữa"!', 'success');
+    
+    // Auto-sync to Google Sheets (like products)
+    queueNotesAutoSave();
+}
+window.deprecateNote = deprecateNote;
+
+
 // Delete note
 async function deleteNote(noteId) {
     if (!confirm('Bạn có chắc chắn muốn xóa ghi chú này?')) return;
@@ -313,28 +356,6 @@ function getPlatformIcon(chatLink) {
 }
 
 // Format date for display
-function formatNoteDate(dateString) {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '-';
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return 'Vừa xong';
-    if (diffMins < 60) return `${diffMins} phút trước`;
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    if (diffDays < 7) return `${diffDays} ngày trước`;
-    
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    const hour = date.getHours().toString().padStart(2, '0');
-    const minute = date.getMinutes().toString().padStart(2, '0');
-    return `${day}/${month}/${year} ${hour}:${minute}`;
-}
 
 // Render notes list
 function renderNotesList() {
@@ -345,9 +366,11 @@ function renderNotesList() {
     
     if (!container) return;
     
-    // Add filtering class to prevent animations
+    // Add filtering class to prevent animations and flicker
     if (masonry) {
         masonry.classList.add('filtering');
+        // Thêm opacity để tránh flicker
+        masonry.style.opacity = '0.7';
     }
     
     // Show/hide bulk actions based on category
@@ -360,29 +383,50 @@ function renderNotesList() {
         }
     }
     
-    let notes = window.appData.notes || [];
+    let allNotes = window.appData.notes || [];
+    
+    
     
     // Filter by active category if not 'all'
     if (activeCategory && activeCategory !== 'all') {
-        if (activeCategory === 'completed') {
-            // Show only completed notes
-            notes = notes.filter(n => n.status === 'completed' || n.status === 'đã hoàn thành');
+        if (activeCategory === 'hoàn thành' || activeCategory === 'completed') {
+            // Show completed notes
+            allNotes = allNotes.filter(n => n.status === 'completed' || n.status === 'đã hoàn thành');
+        } else if (activeCategory === 'thông tin' || activeCategory === 'info') {
+            // Show only info notes that are NOT completed (giống bên "Chưa xử lý")
+            allNotes = allNotes.filter(n => {
+                const tags = String(n.tags || '').toLowerCase();
+                const isInfoNote = tags.includes('note-thong-tin');
+                const isNotCompleted = n.status !== 'completed' && n.status !== 'đã hoàn thành';
+                const result = isInfoNote && isNotCompleted;
+                
+                
+                return result;
+            });
+        } else if (activeCategory === 'chưa xử lý' || activeCategory === 'pending') {
+            // Show only pending notes that are NOT completed
+            allNotes = allNotes.filter(n => {
+                const tags = String(n.tags || '').toLowerCase();
+                const isPendingNote = tags === 'chua-xu-ly';
+                return isPendingNote && n.status !== 'completed' && n.status !== 'đã hoàn thành';
+            });
         } else {
             // Show only active notes (not completed) for other categories
-        notes = notes.filter(n => {
+            allNotes = allNotes.filter(n => {
             const tags = String(n.tags || '').toLowerCase();
                 return tags === activeCategory && n.status !== 'completed' && n.status !== 'đã hoàn thành';
             });
         }
+        
     } else {
-        // For 'all' category, show only active notes (not completed)
-        notes = notes.filter(n => n.status !== 'completed' && n.status !== 'đã hoàn thành');
+        // For 'all' category, show ALL notes (including completed)
+        // Don't filter anything - show all notes
     }
     
     // Filter by search term
     const searchTerm = window.__notesSearchTerm || '';
     if (searchTerm) {
-        notes = notes.filter(note => {
+        allNotes = allNotes.filter(note => {
             const orderCode = String(note.orderCode || '').toLowerCase();
             const chatLink = String(note.chatLink || '').toLowerCase();
             const content = String(note.content || '').toLowerCase();
@@ -395,15 +439,31 @@ function renderNotesList() {
         });
     }
     
+    // Calculate pagination
+    const totalNotes = allNotes.length;
+    _notesTotalPages = Math.ceil(totalNotes / _notesPerPage);
+    
+    // Ensure current page is valid
+    if (_notesCurrentPage > _notesTotalPages) {
+        _notesCurrentPage = Math.max(1, _notesTotalPages);
+    }
+    
+    // Get notes for current page
+    const startIndex = (_notesCurrentPage - 1) * _notesPerPage;
+    const endIndex = startIndex + _notesPerPage;
+    const notes = allNotes.slice(startIndex, endIndex);
+    
     // Filter by time range
     const timeFilter = window.__notesTimeFilter || 'all';
     if (timeFilter !== 'all') {
         notes = notes.filter(note => isNoteInTimeRange(note, timeFilter));
     }
     
-    // Update count
+    // Update count with pagination info
     if (countElement) {
-        countElement.textContent = `${notes.length} ghi chú`;
+        const startItem = (_notesCurrentPage - 1) * _notesPerPage + 1;
+        const endItem = Math.min(_notesCurrentPage * _notesPerPage, totalNotes);
+        countElement.textContent = `${startItem}-${endItem} / ${totalNotes} ghi chú`;
     }
     
     if (notes.length === 0) {
@@ -428,6 +488,9 @@ function renderNotesList() {
         if (note.status === 'completed' || note.status === 'đã hoàn thành') {
             typeLabel = 'Đã hoàn thành';
             typeClass = 'note-completed';
+        } else if (note.status === 'deprecated') {
+            typeLabel = 'Không dùng nữa';
+            typeClass = 'note-deprecated';
         } else if (isInfoNote) {
             typeLabel = 'Note thông tin';
             typeClass = 'note-info';
@@ -481,13 +544,28 @@ function renderNotesList() {
             <div class="v3-actions">
                 <button class="icon-btn" title="Chỉnh sửa" onclick="editNote('${note.id}')">✏️</button>
                 ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : (isInfoNote ? '' : `<button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>`)}
-                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'delete' : 'ok'}" title="${isInfoNote ? 'Xóa note' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deleteNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🗑️' : '✅'}</button>`}
+                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'deprecated' : 'ok'}" title="${isInfoNote ? 'Không dùng nữa' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deprecateNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🚫' : '✅'}</button>`}
             </div>
         </div>`;
     }).join('');
     
-    // Masonry layout for notes
-    container.innerHTML = `<div class="notes-masonry">${cards}</div>`;
+    // Create pagination HTML
+    const paginationHtml = _notesTotalPages > 1 ? createPaginationHtml(_notesCurrentPage, _notesTotalPages, 'notes') : '';
+    
+    // Masonry layout for notes with pagination
+    container.innerHTML = `
+        <div class="notes-masonry">${cards}</div>
+        ${paginationHtml}
+    `;
+    
+    // Hoàn thành render - loại bỏ filtering class và opacity
+    requestAnimationFrame(() => {
+        const masonry = document.querySelector('.notes-masonry');
+        if (masonry) {
+            masonry.classList.remove('filtering');
+            masonry.style.opacity = '1';
+        }
+    });
 }
 
 // Render categories into sidebar with counts
@@ -616,14 +694,12 @@ function createBackup() {
         localStorage.setItem(BACKUP_KEY, JSON.stringify(filteredBackups));
         _lastBackupTime = Date.now();
         
-        console.log(`📦 Backup created: ${backup.notes.length} notes`);
     } catch (error) {
-        console.error('Backup failed:', error);
     }
 }
 
 // Restore from backup
-function restoreFromBackup(backupIndex = 0) {
+function restoreFromBackup(backupIndex = 0, skipConfirm = false) {
     try {
         const backups = JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]');
         if (backups.length === 0) {
@@ -637,9 +713,11 @@ function restoreFromBackup(backupIndex = 0) {
             return false;
         }
         
-        // Confirm restore
+        // Skip confirmation for automatic restore
+        if (!skipConfirm) {
         if (!confirm(`Khôi phục từ bản sao lưu ngày ${new Date(backup.timestamp).toLocaleString()}?\n\nSẽ ghi đè dữ liệu hiện tại!`)) {
             return false;
+            }
         }
         
         window.appData.notes = backup.notes;
@@ -661,6 +739,7 @@ function autoBackup() {
     const now = Date.now();
     if (now - _lastBackupTime > 300000) { // 5 minutes
         createBackup();
+        _lastBackupTime = now;
     }
 }
 
@@ -683,8 +762,8 @@ function loadNotesFromStorage() {
     } catch (error) {
         console.error('Load notes failed:', error);
         // ⚠️ DISABLED: Do NOT clear notes on load error
-        // Keep existing notes safe and try to restore from backup
-        if (restoreFromBackup(0)) {
+        // Keep existing notes safe and try to restore from backup (skip confirmation)
+        if (restoreFromBackup(0, true)) {
             showNotification('Đã khôi phục từ bản sao lưu!', 'success');
         } else {
             // Only clear if no backup available and no existing notes
@@ -706,170 +785,11 @@ function updateNotesTab() {
 }
 window.updateNotesTab = updateNotesTab;
 
-// Start automatic periodic sync
-function startPeriodicSync() {
-    if (_notesSyncInterval) {
-        clearInterval(_notesSyncInterval);
-    }
-    
-    // Sync every 30 seconds for better real-time experience
-    _notesSyncInterval = setInterval(async () => {
-        try {
-            await refreshNotesFromSheets(false); // Silent sync
-        } catch (e) {
-            // Handle error silently
-        }
-    }, 30000);
-}
+// REMOVED: Complex periodic sync - using simple approach like products
 
-// Stop periodic sync
-function stopPeriodicSync() {
-    if (_notesSyncInterval) {
-        clearInterval(_notesSyncInterval);
-        _notesSyncInterval = null;
-    }
-}
+// REMOVED: Complex sync functions - using simple approach like products
 
-// === Sync notes to Google Sheets using existing Apps Script endpoint ===
-async function syncNotesToGoogleSheets() {
-    try {
-        const url = (window.GAS_URL || '') + '?token=' + encodeURIComponent(window.GAS_TOKEN || '');
-        const payload = { action: 'notesUpsert', notes: (window.appData.notes || []).map(n => ({
-            id: n.id,
-            orderCode: n.orderCode || '',
-            chatLink: n.chatLink || '',
-            content: n.content || '',
-            status: n.status || 'active',
-            createdAt: n.createdAt || new Date().toISOString(),
-            updatedAt: n.updatedAt || new Date().toISOString(),
-            tags: n.tags || ''
-        })) };
-        
-        // Show sync indicator
-        showSyncIndicator('Syncing...');
-        
-        // Use text/plain to avoid CORS preflight like products
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
-        const json = await res.json().catch(() => ({}));
-        
-        if (!res.ok || !json.success) {
-            // Handle error silently
-            _notesRetryCount++;
-            if (_notesRetryCount < MAX_RETRY_COUNT) {
-                // Retry sync silently
-                setTimeout(() => syncNotesToGoogleSheets(), 2000 * _notesRetryCount);
-            } else {
-            // Sync failed, will retry later
-                _notesRetryCount = 0;
-            }
-        } else {
-            // Sync successful, no notification needed
-            _notesRetryCount = 0;
-        }
-    } catch (e) {
-        // Handle error silently
-        _notesRetryCount++;
-        if (_notesRetryCount < MAX_RETRY_COUNT) {
-            // Network error, retry silently
-            setTimeout(() => syncNotesToGoogleSheets(), 2000 * _notesRetryCount);
-        } else {
-        // Network sync failed, will retry later
-            _notesRetryCount = 0;
-        }
-    } finally {
-        hideSyncIndicator();
-    }
-}
-
-// === Fetch notes from Google Sheets (Sheet2) and merge by updatedAt ===
-async function refreshNotesFromSheets(force = false) {
-    try {
-        if (_notesSyncInFlight) return; // already running
-        const now = Date.now();
-        if (!force && now - _lastNotesFetchAt < NOTES_FETCH_MIN_INTERVAL_MS) return; // too recent
-        _notesSyncInFlight = true; _lastNotesFetchAt = now;
-        
-        const base = (window.GAS_URL || '');
-        if (!base) return;
-        
-        // Show sync indicator for manual refreshes
-        if (force) {
-            showSyncIndicator('Loading from Sheet2...');
-        }
-        
-        const url = base + '?action=notesList&token=' + encodeURIComponent(window.GAS_TOKEN || '');
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) {
-            if (force) {
-                // Connection failed, will retry later
-            }
-            return;
-        }
-        
-        const data = await res.json();
-        if (!data || !data.success || !Array.isArray(data.data)) {
-            if (force) {
-                // Invalid data, skip sync
-            }
-            return;
-        }
-        
-        // Validate that payload is truly notes (not products)
-        const incoming = (data.data || []).filter(n => {
-            // must have id and at least one of orderCode/content/chatLink/status
-            if (!n || !n.id) return false;
-            const hasNoteFields = ('orderCode' in n) || ('content' in n) || ('chatLink' in n) || ('status' in n);
-            // guard against products payload (name/price without note fields)
-            const looksLikeProduct = ('name' in n) && ('price' in n) && !hasNoteFields;
-            return hasNoteFields && !looksLikeProduct;
-        });
-        
-        if (incoming.length === 0) {
-            // ⚠️ DISABLED: Do NOT clear local notes when server returns empty
-            // This can happen due to network errors or API issues
-            // Keep local notes safe and wait for next sync
-            return;
-        }
-        
-        const current = Array.isArray(window.appData.notes) ? window.appData.notes : [];
-        const idToNote = new Map(current.map(n => [n.id, n]));
-        let hasChanges = false;
-        
-        incoming.forEach(n => {
-            const existing = idToNote.get(n.id);
-            if (!existing) {
-                idToNote.set(n.id, n);
-                hasChanges = true;
-            } else {
-                const a = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
-                const b = new Date(n.updatedAt || n.createdAt || 0).getTime();
-                if (b > a) {
-                    idToNote.set(n.id, n);
-                    hasChanges = true;
-                }
-            }
-        });
-        
-        if (hasChanges) {
-        window.appData.notes = Array.from(idToNote.values()).sort((x,y) => new Date(y.createdAt||0)-new Date(x.createdAt||0));
-        renderNotesList();
-        saveNotesToStorage();
-            if (force) {
-        // Notes loaded successfully, no notification needed
-            }
-        }
-    } catch (e) {
-        // Handle error silently
-        if (force) {
-        // Failed to load notes, will retry later
-        }
-    } finally {
-        _notesSyncInFlight = false;
-        if (force) {
-            hideSyncIndicator();
-        }
-    }
-}
+// REMOVED: Complex fetch functions - using simple approach like products
 
 // Ensure each note has required fields to avoid undefined errors
 function normalizeNotes() {
@@ -889,151 +809,162 @@ function normalizeNotes() {
 }
 
 
-// Enhanced cleanup with conflict resolution
-async function cleanupDeletedNotes() {
-    try {
-        const base = (window.GAS_URL || '');
-        if (!base) {
-            showNotification('Không thể kết nối đến server!', 'error');
-            return;
-        }
-        
-        // Create backup before cleanup
-        createBackup();
-        
-        const url = base + '?action=notesList&token=' + encodeURIComponent(window.GAS_TOKEN || '');
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) {
-            showNotification('Lỗi kết nối server!', 'error');
-            return;
-        }
-        
-        const data = await res.json();
-        if (!data || !data.success || !Array.isArray(data.data)) {
-            showNotification('Dữ liệu server không hợp lệ!', 'error');
-            return;
-        }
-        
-        const sheetNoteIds = new Set(data.data.map(n => n.id));
-        const localNotes = window.appData.notes || [];
-        const notesToKeep = localNotes.filter(note => sheetNoteIds.has(note.id));
-        const notesToDelete = localNotes.length - notesToKeep.length;
-        
-        if (notesToDelete > 0) {
-            // Show detailed warning with note preview
-            const deletedNotes = localNotes.filter(note => !sheetNoteIds.has(note.id));
-            const preview = deletedNotes.slice(0, 3).map(n => `• ${n.content.substring(0, 50)}...`).join('\n');
-            const moreText = deletedNotes.length > 3 ? `\n... và ${deletedNotes.length - 3} ghi chú khác` : '';
-            
-            if (!confirm(`⚠️ CẢNH BÁO: Sẽ xóa ${notesToDelete} ghi chú không có trong Google Sheets.\n\n${preview}${moreText}\n\nBạn có chắc muốn tiếp tục?`)) {
-                return;
-            }
-            
-            // Perform cleanup
-            window.appData.notes = notesToKeep;
-            renderNotesList();
-            renderNotesCategories();
-            saveNotesToStorage();
-            showNotification(`Đã xóa ${notesToDelete} ghi chú!`, 'warning');
-        } else {
-            showNotification('Không có ghi chú nào cần dọn dẹp!', 'success');
-        }
-    } catch (e) {
-        console.error('Cleanup failed:', e);
-        showNotification('Lỗi khi dọn dẹp!', 'error');
-    }
-}
 
-// Enhanced sync with retry mechanism
-async function syncNotesToGoogleSheetsWithRetry() {
-    const maxRetries = 3;
-    let retryCount = 0;
-    
-    while (retryCount < maxRetries) {
-        try {
-            await syncNotesToGoogleSheets();
-            _notesRetryCount = 0; // Reset on success
-            return true;
-        } catch (error) {
-            retryCount++;
-            console.warn(`Sync attempt ${retryCount} failed:`, error);
-            
-            if (retryCount < maxRetries) {
-                // Wait before retry (exponential backoff)
-                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            } else {
-                console.error('All sync attempts failed');
-                showNotification('Đồng bộ thất bại! Dữ liệu đã được lưu local.', 'warning');
-                return false;
-            }
-        }
-    }
-}
 
-// Enhanced data validation
-function validateNoteData(note) {
-    if (!note || typeof note !== 'object') return false;
-    
-    const requiredFields = ['id', 'content', 'status', 'createdAt', 'updatedAt'];
-    for (const field of requiredFields) {
-        if (!note[field]) return false;
-    }
-    
-    // Validate dates
-    if (isNaN(new Date(note.createdAt).getTime()) || 
-        isNaN(new Date(note.updatedAt).getTime())) {
-        return false;
-    }
-    
-    return true;
-}
+// Utilities to control from UI/Console if needed (EXACTLY like products)
+window.loadNotesFromGoogleSheets = loadNotesFromGoogleSheets;
+window.saveNotesToGoogleSheets = saveNotesToGoogleSheets;
 
-// Enhanced save with validation
-function saveNotesToStorage() {
-    try {
-        // Validate all notes before saving
-        const validNotes = window.appData.notes.filter(validateNoteData);
-        
-        if (validNotes.length !== window.appData.notes.length) {
-            console.warn(`Filtered out ${window.appData.notes.length - validNotes.length} invalid notes`);
-            window.appData.notes = validNotes;
-        }
-        
-        const data = {
-            notes: window.appData.notes,
-            lastSaved: Date.now(),
-            version: '1.1'
-        };
-        
-        localStorage.setItem('pdc_app_data', JSON.stringify(data));
-        
-        // Create backup after successful save
-        autoBackup();
-        
-    } catch (error) {
-        console.error('Save failed:', error);
-        showNotification('Lỗi lưu dữ liệu!', 'error');
-    }
-}
 
-// Utilities to control from UI/Console if needed
-window.syncNotesNow = async function() { 
-    await refreshNotesFromSheets(true); 
-    await syncNotesToGoogleSheetsWithRetry(); 
-};
-window.clearNotesCache = function() { 
-    try { 
-        // ⚠️ WARNING: This will clear ALL notes data!
-        if (confirm('⚠️ CẢNH BÁO: Thao tác này sẽ xóa TẤT CẢ ghi chú!\n\nBạn có chắc chắn muốn tiếp tục?')) {
-            localStorage.removeItem('pdc_app_data'); 
-            // Cache cleared, reloading 
-            setTimeout(() => location.reload(), 300); 
-        }
-    } catch {} 
-};
-window.cleanupNotes = cleanupDeletedNotes;
 window.createBackup = createBackup;
 window.restoreFromBackup = restoreFromBackup;
+
+// Auto-save debounce helper (EXACTLY like products)
+function queueNotesAutoSave() {
+    if (_notesAutoSaveTimer) {
+        console.log('⏰ [NOTES AUTO-SAVE] Clear timer cũ...');
+        clearTimeout(_notesAutoSaveTimer);
+    }
+    console.log('⏰ [NOTES AUTO-SAVE] Đã lên lịch tự động lưu sau 3 giây...');
+    _notesAutoSaveTimer = setTimeout(() => {
+        console.log('🚀 [NOTES AUTO-SAVE] Thực hiện tự động lưu vào database...');
+        saveNotesToGoogleSheets().then(() => {
+            console.log('✅ [NOTES AUTO-SAVE] Hoàn thành lưu vào database');
+        }).catch((error) => {
+            console.error('❌ [NOTES AUTO-SAVE] Lỗi khi lưu:', error);
+        });
+        _notesAutoSaveTimer = null;
+    }, 3000); // 3 seconds delay - faster than products for better UX
+}
+
+// Save notes to Google Sheets (EXACTLY like products)
+async function saveNotesToGoogleSheets() {
+    try {
+        console.log('🔄 [NOTES SYNC] Bắt đầu lưu ghi chú vào database...');
+        console.log('📊 [NOTES SYNC] Số lượng notes:', (window.appData.notes || []).length);
+        console.log('📊 [NOTES SYNC] Notes data:', window.appData.notes);
+        showNotification('Đang lưu ghi chú vào Google Sheets...', 'info');
+        
+        // Convert notes data to Google Sheets format
+        const notes = (window.appData.notes || []).map(note => ({
+            id: note.id,
+            orderCode: note.orderCode || '',
+            chatLink: note.chatLink || '',
+            content: note.content || '',
+            status: note.status || 'active',
+            createdAt: note.createdAt || new Date().toISOString(),
+            updatedAt: note.updatedAt || new Date().toISOString(),
+            tags: note.tags || ''
+        }));
+        
+        console.log('📤 [NOTES SYNC] Dữ liệu gửi lên server:', {
+            count: notes.length,
+            notes: notes.map(n => ({ id: n.id, content: n.content.substring(0, 50) + '...', status: n.status }))
+        });
+        
+        const payload = {
+            action: 'notesUpsert',
+            notes: notes
+        };
+        
+        console.log('🌐 [NOTES SYNC] Gửi request đến:', window.GAS_URL);
+        
+        const response = await fetch(`${window.GAS_URL}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        
+        console.log('📡 [NOTES SYNC] Response status:', response.status);
+        
+        const result = await response.json();
+        console.log('📥 [NOTES SYNC] Server response:', result);
+        
+        if (result.success) {
+            console.log('✅ [NOTES SYNC] THÀNH CÔNG! Đã lưu vào database:', {
+                rowsAffected: result.rowsAffected,
+                message: result.message,
+                timestamp: new Date().toLocaleString()
+            });
+            // Chỉ hiển thị thông báo khi save thủ công, không hiển thị khi auto-save
+            if (!_notesAutoSaveTimer) {
+                showNotification(`Đã lưu ${notes.length} ghi chú`, 'success', 2000);
+            }
+        } else {
+            throw new Error(result.message || 'Lỗi lưu dữ liệu');
+        }
+        
+    } catch (error) {
+        console.error('❌ [NOTES SYNC] LỖI khi lưu vào database:', error);
+        showNotification('Lỗi: ' + error.message, 'error');
+    }
+}
+
+// Load notes from Google Sheets (EXACTLY like products)
+async function loadNotesFromGoogleSheets() {
+    try {
+        
+        // Hiển thị loading indicator nhẹ nhàng
+        const container = document.getElementById('notesList');
+        if (container && !container.querySelector('.loading-indicator')) {
+            const loadingEl = document.createElement('div');
+            loadingEl.className = 'loading-indicator';
+            loadingEl.innerHTML = '<div class="loading-spinner"></div>';
+            loadingEl.style.cssText = 'position: absolute; top: 20px; right: 20px; z-index: 1000;';
+            container.appendChild(loadingEl);
+        }
+        
+        
+        const response = await fetch(`${window.GAS_URL}?action=notesList`);
+        
+        const result = await response.json();
+        
+        if (result.success && Array.isArray(result.data)) {
+            // Convert Google Sheets data to app format
+            const notes = result.data.map(item => ({
+                id: item.id || generateUUID(),
+                orderCode: item.orderCode || '',
+                chatLink: item.chatLink || '',
+                content: item.content || '',
+                status: item.status || 'active',
+                createdAt: item.createdAt || new Date().toISOString(),
+                updatedAt: item.updatedAt || new Date().toISOString(),
+                tags: item.tags || ''
+            }));
+            
+            
+            // Cập nhật dữ liệu mà không re-render ngay
+            window.appData.notes = notes;
+            appData.metadata.lastUpdated = new Date().toISOString();
+            
+            // Loại bỏ loading indicator
+            const loadingEl = document.querySelector('.loading-indicator');
+            if (loadingEl) loadingEl.remove();
+            
+            // Chỉ render một lần cuối cùng
+            renderNotesList();
+            renderNotesCategories();
+            
+            // Chỉ hiển thị notification nếu có dữ liệu mới và khác với local
+            const localCount = (window.appData.notes || []).length;
+            if (notes.length > 0 && notes.length !== localCount) {
+                showNotification(`Đã đồng bộ ${notes.length} ghi chú`, 'success', 2000);
+            }
+        } else {
+            throw new Error(result.message || result.error || 'Không thể tải dữ liệu');
+        }
+        
+    } catch (error) {
+        console.error('❌ [NOTES LOAD] LỖI khi tải từ database:', error);
+        
+        // Loại bỏ loading indicator
+        const loadingEl = document.querySelector('.loading-indicator');
+        if (loadingEl) loadingEl.remove();
+        
+        // Không hiển thị error notification để tránh flicker
+        console.log('⚠️ [NOTES LOAD] Sử dụng dữ liệu local thay vì database');
+    }
+}
 
 // Toggle additional fields based on note tag selection
 function toggleNoteFields() {
@@ -1082,8 +1013,7 @@ function initNoteForm() {
 
 window.toggleNoteFields = toggleNoteFields;
 window.initNoteForm = initNoteForm;
-window.startNotesSync = startPeriodicSync;
-window.stopNotesSync = stopPeriodicSync;
+// REMOVED: Complex sync controls - using simple approach like products
 
 // Search notes functionality
 function searchNotes() {
@@ -1092,6 +1022,9 @@ function searchNotes() {
     
     const searchTerm = searchInput.value.trim().toLowerCase();
     window.__notesSearchTerm = searchTerm;
+    
+    // Reset to first page when searching
+    _notesCurrentPage = 1;
     
     // Re-render notes list with search filter
     renderNotesList();
@@ -1137,19 +1070,12 @@ function confirmDeleteNote() {
         renderNotesCategories();
         saveNotesToStorage();
         
-        // Sync to Google Sheets
-        try {
-            syncNotesToGoogleSheets();
-        } catch (e) {
-            // Handle error silently
-        }
+        // Auto-sync to Google Sheets (like products)
+        console.log('🗑️ [NOTES DELETE] Đã xóa ghi chú, sẽ tự động cập nhật database...');
+        queueNotesAutoSave();
         
-        // Trigger immediate real-time sync
-        setTimeout(() => {
-            try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
-        }, 1000);
-        
-        showNotification('Đã xóa note!', 'success');
+        // Thông báo ngắn gọn
+        showNotification('Đã xóa!', 'success', 1500);
         
         // Close modal
         closeDeleteModal();
@@ -1244,18 +1170,18 @@ window.deleteSelectedCompleted = deleteSelectedCompleted;
 // Notes notifications delegate to the global toast system (refund-style)
 function showNotification(message, type = 'info', title = '') {
     try {
-        const normalized = (type === 'warning') ? 'error' : (type === 'info' ? 'success' : type);
+        // Direct mapping to createToast with proper type handling
         if (typeof window.createToast === 'function') {
-            // Use app-level toasts for consistent styling
-            const toastType = normalized === 'success' ? 'success' : 'error';
-            window.createToast(message, toastType, 3000);
+            window.createToast(message, type, 3000);
             return;
         }
         if (typeof window.showNotification === 'function' && window.showNotification !== showNotification) {
-            window.showNotification(message, normalized);
+            window.showNotification(message, type);
             return;
         }
-    } catch {}
+    } catch (error) {
+        // Silent fallback
+    }
 }
 
 
@@ -1282,9 +1208,76 @@ function applyMasonryLayout() {
 
 window.applyMasonryLayout = applyMasonryLayout;
 
-function scheduleRefreshNotes(delayMs) {
-    setTimeout(() => { refreshNotesFromSheets(true); }, Math.max(0, delayMs || 0));
+// REMOVED: Complex refresh scheduling - using simple approach like products
+
+// Pagination functions
+function createPaginationHtml(currentPage, totalPages, type) {
+    if (totalPages <= 1) {
+        return '';
+    }
+    
+    let paginationHtml = '<div class="pagination">';
+    
+    // Previous button
+    if (currentPage > 1) {
+        paginationHtml += `<button class="pagination-btn" onclick="goToPage(${currentPage - 1}, '${type}')">‹</button>`;
+    } else {
+        paginationHtml += '<button class="pagination-btn disabled">‹</button>';
+    }
+    
+    // Page numbers
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        paginationHtml += `<button class="pagination-btn" onclick="goToPage(1, '${type}')">1</button>`;
+        if (startPage > 2) {
+            paginationHtml += '<span class="pagination-ellipsis">...</span>';
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === currentPage) {
+            paginationHtml += `<button class="pagination-btn active">${i}</button>`;
+        } else {
+            paginationHtml += `<button class="pagination-btn" onclick="goToPage(${i}, '${type}')">${i}</button>`;
+        }
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHtml += '<span class="pagination-ellipsis">...</span>';
+        }
+        paginationHtml += `<button class="pagination-btn" onclick="goToPage(${totalPages}, '${type}')">${totalPages}</button>`;
+    }
+    
+    // Next button
+    if (currentPage < totalPages) {
+        paginationHtml += `<button class="pagination-btn" onclick="goToPage(${currentPage + 1}, '${type}')">›</button>`;
+    } else {
+        paginationHtml += '<button class="pagination-btn disabled">›</button>';
+    }
+    
+    paginationHtml += '</div>';
+    return paginationHtml;
 }
+
+function goToPage(page, type) {
+    if (type === 'notes') {
+        _notesCurrentPage = page;
+        renderNotesList();
+    } else if (type === 'products') {
+        // Call the products goToPage function
+        if (typeof window.goToProductsPage === 'function') {
+            window.goToProductsPage(page, type);
+        }
+    }
+}
+
+// Expose pagination functions
+window.goToPage = goToPage;
+
+
 
 // ===== Lightweight local tag management (no DB) =====
 const SAVED_TAGS_KEY = 'pdc_saved_tags_v1';
@@ -1479,15 +1472,12 @@ function saveEditNote(noteId) {
     // Save to localStorage
     saveNotesToStorage();
     
-    // Sync to Google Sheets
-    try { syncNotesToGoogleSheets(); } catch (e) { /* Handle error silently */ }
+    // Auto-sync to Google Sheets (like products)
+    console.log('✏️ [NOTES UPDATE] Đã cập nhật ghi chú, sẽ tự động lưu vào database...');
+    queueNotesAutoSave();
     
-    // Trigger immediate real-time sync
-    setTimeout(() => {
-        try { refreshNotesFromSheets(true); } catch (e) { /* Handle error silently */ }
-    }, 1000);
-    
-    showNotification('Đã cập nhật ghi chú!', 'success');
+    // Thông báo ngắn gọn
+    showNotification('Đã cập nhật!', 'success', 1500);
 }
 window.saveEditNote = saveEditNote;
 
@@ -1537,7 +1527,7 @@ function applyScientificFilter() {
             case 'pending':
                 return !isCompleted && !isInfoNote;
             case 'info':
-                return isInfoNote;
+                return isInfoNote && !isCompleted;  // ✅ SỬA: Loại bỏ notes đã hoàn thành
             case 'completed':
                 return isCompleted;
             default:
@@ -1610,7 +1600,7 @@ function renderScientificFilteredNotes() {
         return;
     }
     
-    const cards = filteredNotes.map(note => {
+    const cards = filteredNotes.map((note, index) => {
         const isInfoNote = (note.tags || '').includes('note-thong-tin');
         let typeLabel, typeClass;
         
@@ -1652,6 +1642,7 @@ function renderScientificFilteredNotes() {
         return `
         <div class="note-cardv3 ${typeClass}" id="note-${note.id}" data-note-id="${note.id}" data-type="${cardType}">
             ${checkboxHtml}
+            <div class="note-number">${index + 1}</div>
             <div class="v3-head">
                 ${headerContent}
                 <span class="v3-status ${typeClass}">${typeLabel}</span>
@@ -1663,7 +1654,7 @@ function renderScientificFilteredNotes() {
             <div class="v3-actions">
                 <button class="icon-btn" title="Chỉnh sửa" onclick="editNote('${note.id}')">✏️</button>
                 ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : (isInfoNote ? '' : `<button class="icon-btn" title="Copy" onclick="copyNoteChatLink('${note.id}')">📋</button>`)}
-                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'delete' : 'ok'}" title="${isInfoNote ? 'Xóa note' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deleteNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🗑️' : '✅'}</button>`}
+                ${(note.status === 'completed' || note.status === 'đã hoàn thành') ? '' : `<button class="icon-btn ${isInfoNote ? 'deprecated' : 'ok'}" title="${isInfoNote ? 'Không dùng nữa' : 'Hoàn thành'}" onclick="${isInfoNote ? 'deprecateNote' : 'completeNote'}('${note.id}')">${isInfoNote ? '🚫' : '✅'}</button>`}
             </div>
         </div>`;
     }).join('');

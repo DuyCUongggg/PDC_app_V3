@@ -137,47 +137,23 @@
             document.body.appendChild(container);
         }
 
-        // Style container for vertical stacking (push down older toasts)
-        Object.assign(container.style, {
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: '10px',
-            zIndex: '10000',
-            pointerEvents: 'none'
-        });
+        // Use CSS class for container styling
+        container.className = 'toast-container';
 
-        // Create toast element
+        // Create toast element with enhanced styling
         const toast = document.createElement('div');
-        toast.className = `toast-notification toast-${type}`;
-        toast.textContent = message;
+        toast.className = `toast toast-${type}`;
+        
+        // Add icon based on type
+        const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+        toast.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">${icon}</span>
+                <span>${message}</span>
+            </div>
+        `;
 
-        // Add styles
-        Object.assign(toast.style, {
-            padding: '12px 20px',
-            borderRadius: '8px',
-            color: 'white',
-            fontWeight: '500',
-            fontSize: '14px',
-            maxWidth: '320px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-            transform: 'translateX(100%)',
-            transition: 'transform 0.3s ease, opacity 0.3s ease',
-            opacity: '0',
-            pointerEvents: 'auto'
-        });
-
-        // Set background color based on type
-        if (type === 'success') {
-            toast.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-        } else if (type === 'error') {
-            toast.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-        } else {
-            toast.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
-        }
+        // CSS classes handle all styling now
 
         // Add to container (prepend so new appears on top, pushing old down)
         container.prepend(toast);
@@ -188,19 +164,27 @@
             container.lastElementChild && container.lastElementChild.remove();
         }
 
-        // Animate in
+        // Animate in with beautiful slide effect
         requestAnimationFrame(() => {
-            toast.style.transform = 'translateX(0)';
-            toast.style.opacity = '1';
+            toast.classList.add('show');
         });
 
-        // Auto remove
+        // Auto remove after duration with slide out animation
         setTimeout(() => {
-            toast.style.transform = 'translateX(100%)';
+            toast.style.animation = 'slideOutRight 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+            toast.style.transform = 'translateX(100%) scale(0.8)';
             toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 300);
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
         }, Math.max(1500, duration || 0));
     }
+    
+    // Export createToast to window for other modules
+    window.createToast = createToast;
+    
     function generateUUID() {
         try {
             if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -470,13 +454,17 @@
 
     // admin list
     function getFilters() { return { q: (document.getElementById('adminSearch')?.value || '').toLowerCase(), cat: (document.getElementById('categoryFilter')?.value || '') }; }
-    function filterProducts() { renderProductList(); } window.filterProducts = filterProducts;
+    function filterProducts() { 
+        _productsCurrentPage = 1; // Reset to first page when filtering
+        renderProductList(); 
+    } 
+    window.filterProducts = filterProducts;
     function renderProductList() {
         const root = document.getElementById('productList'); 
         if (!root) return;
         
         const { q, cat } = getFilters();
-        const items = (appData.products || []).filter(p => {
+        const allItems = (appData.products || []).filter(p => {
             const nameN = normalizeText(p.name);
             const catN = normalizeText(p.category);
             const qN = normalizeText(q);
@@ -485,9 +473,27 @@
             return okQ && okC;
         });
         
-        // Update products count
+        // Calculate pagination
+        const totalProducts = allItems.length;
+        _productsTotalPages = Math.ceil(totalProducts / _productsPerPage);
+        
+        // Ensure current page is valid
+        if (_productsCurrentPage > _productsTotalPages) {
+            _productsCurrentPage = Math.max(1, _productsTotalPages);
+        }
+        
+        // Get products for current page
+        const startIndex = (_productsCurrentPage - 1) * _productsPerPage;
+        const endIndex = startIndex + _productsPerPage;
+        const items = allItems.slice(startIndex, endIndex);
+        
+        // Update products count with pagination info
         const productsCount = document.getElementById('productsCount');
-        if (productsCount) productsCount.textContent = `${items.length} sản phẩm`;
+        if (productsCount) {
+            const startItem = (_productsCurrentPage - 1) * _productsPerPage + 1;
+            const endItem = Math.min(_productsCurrentPage * _productsPerPage, totalProducts);
+            productsCount.textContent = `${startItem}-${endItem} / ${totalProducts} sản phẩm`;
+        }
         
         if (items.length === 0) { 
             root.innerHTML = `
@@ -540,6 +546,12 @@
                 const productNames = items.map(p => p.name);
                 preloadLogos(productNames);
             }, 100);
+        }
+        
+        // Add pagination if needed
+        if (_productsTotalPages > 1) {
+            const paginationHtml = createPaginationHtml(_productsCurrentPage, _productsTotalPages, 'products');
+            root.innerHTML += paginationHtml;
         }
     }
     function addProduct() {
@@ -830,6 +842,7 @@
     window.addProduct = addProduct;
     window.deleteProduct = deleteProduct;
     window.editProduct = editProduct;
+    window.goToProductsPage = goToProductsPage;
     window.closeDeleteConfirmation = closeDeleteConfirmation;
     window.confirmDeleteProduct = confirmDeleteProduct;
 
@@ -1231,12 +1244,77 @@
 
     // Auto-save debounce helper
     let _autoSaveTimer = null;
+    
+    // Pagination variables for products
+    let _productsCurrentPage = 1;
+    let _productsPerPage = 10;
+    let _productsTotalPages = 1;
     function queueAutoSave() {
         if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
         _autoSaveTimer = setTimeout(() => {
             saveToGoogleSheets();
             _autoSaveTimer = null;
         }, 5000);
+    }
+
+    // Pagination functions for products
+    function createPaginationHtml(currentPage, totalPages, type) {
+        if (totalPages <= 1) return '';
+        
+        let paginationHtml = '<div class="pagination">';
+        
+        // Previous button
+        if (currentPage > 1) {
+            paginationHtml += `<button class="pagination-btn" onclick="goToPage(${currentPage - 1}, '${type}')">‹</button>`;
+        } else {
+            paginationHtml += '<button class="pagination-btn disabled">‹</button>';
+        }
+        
+        // Page numbers
+        const startPage = Math.max(1, currentPage - 2);
+        const endPage = Math.min(totalPages, currentPage + 2);
+        
+        if (startPage > 1) {
+            paginationHtml += `<button class="pagination-btn" onclick="goToPage(1, '${type}')">1</button>`;
+            if (startPage > 2) {
+                paginationHtml += '<span class="pagination-ellipsis">...</span>';
+            }
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            if (i === currentPage) {
+                paginationHtml += `<button class="pagination-btn active">${i}</button>`;
+            } else {
+                paginationHtml += `<button class="pagination-btn" onclick="goToPage(${i}, '${type}')">${i}</button>`;
+            }
+        }
+        
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                paginationHtml += '<span class="pagination-ellipsis">...</span>';
+            }
+            paginationHtml += `<button class="pagination-btn" onclick="goToPage(${totalPages}, '${type}')">${totalPages}</button>`;
+        }
+        
+        // Next button
+        if (currentPage < totalPages) {
+            paginationHtml += `<button class="pagination-btn" onclick="goToPage(${currentPage + 1}, '${type}')">›</button>`;
+        } else {
+            paginationHtml += '<button class="pagination-btn disabled">›</button>';
+        }
+        
+        paginationHtml += '</div>';
+        return paginationHtml;
+    }
+
+    function goToProductsPage(page, type) {
+        if (type === 'products') {
+            _productsCurrentPage = page;
+            renderProductList();
+        } else if (type === 'notes') {
+            // Notes pagination is handled in notes.js
+            console.log('Notes pagination handled in notes.js');
+        }
     }
 
     // Version management - Only bump when I fix code

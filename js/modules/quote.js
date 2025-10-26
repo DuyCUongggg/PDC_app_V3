@@ -53,6 +53,12 @@ function resetQuoteForm() {
     const quantityInput = document.getElementById('quoteQuantity');
     if (quantityInput) quantityInput.value = '1';
     
+    // Reset duration
+    const durationInput = document.getElementById('quoteDuration');
+    const durationUnitSelect = document.getElementById('quoteDurationUnit');
+    if (durationInput) durationInput.value = '';
+    if (durationUnitSelect) durationUnitSelect.value = 'tháng';
+    
     // Disable buttons
     const quoteBtn = document.getElementById('quoteBtn');
     const addBtn = document.getElementById('addProductBtn');
@@ -144,7 +150,7 @@ function calculateQuote() {
     // Tính toán tổng cho tất cả sản phẩm
     let totalOriginalPrice = 0;
     selectedQuoteProducts.forEach(item => {
-        totalOriginalPrice += item.product.price * item.quantity;
+        totalOriginalPrice += item.product.price * item.quantity * item.product.duration;
     });
     
     if (totalOriginalPrice < 200000) {
@@ -210,8 +216,8 @@ function calculateQuote() {
     if (breakdown) {
         const productListHtml = selectedQuoteProducts.map(item => `
             <div class="breakdown-item">
-                <span class="breakdown-label">${item.product.name} (${item.quantity} × ${formatPrice(item.product.price)}đ):</span>
-                <span class="breakdown-value">${formatPrice(item.product.price * item.quantity)}đ</span>
+                <span class="breakdown-label">${item.product.name} (${item.quantity} × ${formatPrice(item.product.price)}đ × ${item.product.duration} ${item.product.unit || 'tháng'}):</span>
+                <span class="breakdown-value">${formatPrice(item.product.price * item.quantity * item.product.duration)}đ</span>
             </div>
         `).join('');
         
@@ -250,7 +256,7 @@ function calculateQuote() {
     
     // Generate customer content
     const productListText = selectedQuoteProducts.map(item => 
-        `• ${item.product.name}: ${item.quantity} × ${formatPrice(item.product.price)}đ = ${formatPrice(item.product.price * item.quantity)}đ`
+        `• ${item.product.name}: ${item.quantity} × ${formatPrice(item.product.price)}đ × ${item.product.duration} ${item.product.unit || 'tháng'} = ${formatPrice(item.product.price * item.quantity * item.product.duration)}đ`
     ).join('\n');
     
     const customerContent = `BÁO GIÁ SẢN PHẨM
@@ -430,7 +436,7 @@ function generateInvoiceTable(data) {
             <tbody>
                 ${products.map((item, index) => {
                     const unitWithWarranty = Math.round(item.product.price * 1.1);
-                    const lineTotal = unitWithWarranty * item.quantity;
+                    const lineTotal = unitWithWarranty * item.quantity * item.product.duration;
                     return `
                 <tr>
                     <td class="text-center">${index + 1}</td>
@@ -635,8 +641,25 @@ function addProductToQuote() {
     const quantityInput = document.getElementById('quoteQuantity');
     const quantity = Math.max(1, parseInt(quantityInput ? quantityInput.value : 1) || 1);
     
-    // Check if product already exists in list
-    const existingIndex = selectedQuoteProducts.findIndex(item => item.product.id === selectedQuoteProduct.id);
+    // Get custom duration if provided
+    const durationInput = document.getElementById('quoteDuration');
+    const durationUnitSelect = document.getElementById('quoteDurationUnit');
+    const customDuration = durationInput ? parseInt(durationInput.value) : null;
+    const customDurationUnit = durationUnitSelect ? durationUnitSelect.value : 'tháng';
+    
+    // Create product with custom duration if provided
+    const productToAdd = { ...selectedQuoteProduct };
+    if (customDuration && customDuration > 0) {
+        productToAdd.duration = customDuration;
+        productToAdd.unit = customDurationUnit;
+    }
+    
+    // Check if product already exists in list (compare by id and custom duration)
+    const existingIndex = selectedQuoteProducts.findIndex(item => 
+        item.product.id === selectedQuoteProduct.id && 
+        item.product.duration === productToAdd.duration && 
+        item.product.unit === productToAdd.unit
+    );
     
     if (existingIndex >= 0) {
         // Update quantity if product exists
@@ -644,7 +667,7 @@ function addProductToQuote() {
     } else {
         // Add new product
         selectedQuoteProducts.push({
-            product: selectedQuoteProduct,
+            product: productToAdd,
             quantity: quantity
         });
     }
@@ -654,6 +677,8 @@ function addProductToQuote() {
     const searchInput = document.getElementById('quoteProductSearch');
     if (searchInput) searchInput.value = '';
     if (quantityInput) quantityInput.value = '1';
+    if (durationInput) durationInput.value = '';
+    if (durationUnitSelect) durationUnitSelect.value = 'tháng';
     
     // Hide search results
     const searchResults = document.getElementById('quoteSearchResults');
@@ -697,8 +722,8 @@ function updateSelectedProductsList() {
                 <div class="selected-product-details">
                     <span>Giá: ${formatPrice(item.product.price)}đ</span>
                     <span>Số lượng: ${item.quantity}</span>
-                    <span>Thời hạn: ${item.product.duration} ${item.product.durationUnit}</span>
-                    <span>Tổng: ${formatPrice(item.product.price * item.quantity)}đ</span>
+                    <span>Thời hạn: ${item.product.duration} ${item.product.unit || 'tháng'}</span>
+                    <span>Tổng: ${formatPrice(item.product.price * item.quantity * item.product.duration)}đ</span>
                 </div>
             </div>
             <div class="selected-product-actions">
