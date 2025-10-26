@@ -8430,6 +8430,16 @@ button.quick-btn.active:hover,
     max-width: 400px;
 }
 
+/* Light mode - distinct background */
+:not(.dark) .toast {
+    background: #f8fafc !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+}
+
 .toast.show {
     transform: translateX(0);
     opacity: 1;
@@ -8453,6 +8463,31 @@ button.quick-btn.active:hover,
 .toast.warning {
     background: linear-gradient(135deg, #f59e0b, #d97706);
     border-left: 4px solid #fbbf24;
+}
+
+/* Light mode - colored backgrounds for visibility */
+:not(.dark) .toast.success { 
+    border-left: 3px solid #10b981;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), #f0fdf4) !important;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+:not(.dark) .toast.error { 
+    border-left: 3px solid #ef4444;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), #fef2f2) !important;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+:not(.dark) .toast.info { 
+    border-left: 3px solid #3b82f6;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), #eff6ff) !important;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+:not(.dark) .toast.warning {
+    border-left: 3px solid #f59e0b;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), #fffbeb) !important;
+    border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
 /* Beautiful slide animations */

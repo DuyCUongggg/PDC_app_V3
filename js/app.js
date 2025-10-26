@@ -144,12 +144,23 @@
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         
-        // Add icon based on type
-        const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+        // Add soft icon based on type
+        const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : type === 'warning' ? '!' : 'i';
         toast.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 16px;">${icon}</span>
-                <span>${message}</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="
+                    width: 24px; 
+                    height: 24px; 
+                    border-radius: 50%; 
+                    background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    font-weight: bold;
+                ">${icon}</div>
+                <span style="font-weight: 500;">${message}</span>
             </div>
         `;
 
