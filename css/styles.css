@@ -4119,9 +4119,9 @@ section.tab-content.active {
 .refund-message-textarea {
     width: 100% !important;
     max-width: 100% !important;
-    height: 300px !important;
-    min-height: 300px !important;
-    max-height: 300px !important;
+    height: auto !important;
+    min-height: 350px !important;
+    max-height: none !important;
     padding: 15px;
     border: 2px solid var(--border-color);
     border-radius: 8px;
@@ -4129,13 +4129,14 @@ section.tab-content.active {
     font-size: 14px;
     line-height: 1.6;
     color: var(--text-primary);
-    resize: none !important;
+    resize: vertical !important;
     background: var(--input-bg);
     margin-bottom: 20px;
     box-sizing: border-box !important;
     overflow-wrap: break-word !important;
     word-wrap: break-word !important;
     transition: border-color 0.3s ease;
+    overflow-y: visible !important;
 }
 
 .refund-message-textarea:focus {

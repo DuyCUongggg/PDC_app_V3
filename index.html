@@ -56,6 +56,48 @@
             transform: translateY(-2px) !important;
             box-shadow: 0 4px 16px rgba(49, 130, 206, 0.3) !important;
         }
+        
+        /* Quote fee inputs styling */
+        #quoteWarrantyFee, #quoteVATFee {
+            transition: all 0.2s ease;
+        }
+        #quoteWarrantyFee:focus, #quoteVATFee:focus {
+            outline: 2px solid #3182ce;
+            outline-offset: 2px;
+            border-color: #3182ce;
+        }
+        .dark #quoteWarrantyFee, .dark #quoteVATFee {
+            background: #1a202c !important;
+            border-color: #4a5568 !important;
+            color: #e2e8f0 !important;
+        }
+        .dark #quoteWarrantyFee:focus, .dark #quoteVATFee:focus {
+            outline-color: #60a5fa;
+            border-color: #60a5fa;
+        }
+        
+        /* Price option labels hover effect */
+        #priceOption1Label:hover, #priceOption2Label:hover {
+            border-color: #3182ce !important;
+            background: rgba(49, 130, 206, 0.05) !important;
+        }
+        #priceOption1Label input:checked ~ div,
+        #priceOption2Label input:checked ~ div {
+            color: var(--text-primary, #1a202c);
+        }
+        #priceOption1Label:has(input:checked),
+        #priceOption2Label:has(input:checked) {
+            border-color: #3182ce !important;
+            background: rgba(49, 130, 206, 0.1) !important;
+        }
+        .dark #priceOption1Label:hover, .dark #priceOption2Label:hover {
+            background: rgba(96, 165, 250, 0.1) !important;
+        }
+        .dark #priceOption1Label:has(input:checked),
+        .dark #priceOption2Label:has(input:checked) {
+            border-color: #60a5fa !important;
+            background: rgba(96, 165, 250, 0.15) !important;
+        }
     </style>
     <!-- Favicon -->
     <link rel="icon" href="img/paw-solid-full.svg" type="image/svg+xml" />
@@ -571,7 +613,7 @@
                                 <!-- Removed selected products comparison per request -->
                                 <div id="upgradeSelectedProducts" class="selected-products" style="display:none;"></div>
 
-                                <button id="upgradeBtn" class="btn-calculate" disabled onclick="calculateUpgrade()">
+                                <button id="upgradeBtn" class="btn-calculate" disabled>
                                     <span class="btn-icon">🧮</span>
                                     Tính đổi gói
                                 </button>
@@ -974,7 +1016,13 @@
                                     Làm mới
                                 </button>
                             </div>
-                            <p class="card-subtitle">Tính báo giá với phí bảo hành 10% và VAT 8%</p>
+                            <p class="card-subtitle" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                Tính báo giá với phí bảo hành 
+                                <input id="quoteWarrantyFee" type="number" min="0" max="100" step="0.1" value="10" style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 4px; background: var(--bg-primary, white); color: var(--text-primary, #1a202c); text-align: center; font-size: 14px;" />
+                                % và VAT 
+                                <input id="quoteVATFee" type="number" min="0" max="100" step="0.1" value="8" style="width: 60px; padding: 4px 8px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 4px; background: var(--bg-primary, white); color: var(--text-primary, #1a202c); text-align: center; font-size: 14px;" />
+                                %
+                            </p>
                         </div>
 
                         <div class="card-content">
@@ -1002,7 +1050,7 @@
                                     <div class="form-group">
                                         <label class="form-label">Thời hạn (tùy chọn)</label>
                                         <div style="display: flex; gap: 8px;">
-                                            <input id="quoteDuration" class="form-input" type="number" placeholder="0" min="1" step="1" style="flex: 1;" />
+                                            <input id="quoteDuration" class="form-input" type="number" placeholder="Tối thiểu theo gói" min="1" step="1" style="flex: 1;" />
                                             <select id="quoteDurationUnit" class="form-select" style="flex: 1;">
                                                 <option value="ngày">ngày</option>
                                                 <option value="tháng" selected>tháng</option>
@@ -1020,7 +1068,7 @@
                                 </div>
                                 
                                 <div class="form-help-row">
-                                    <small class="form-help">💡 Để trống thời hạn sẽ sử dụng thời hạn mặc định của sản phẩm</small>
+                                    <small class="form-help">💡 Để trống thời hạn sẽ sử dụng thời hạn mặc định của sản phẩm. Nếu nhập thì phải ≥ thời hạn mặc định.</small>
                                 </div>
 
                                 <!-- Danh sách sản phẩm đã chọn -->
@@ -1460,6 +1508,136 @@
                 <button class="btn btn-primary" onclick="addShift()">
                     <span class="btn-icon">➕</span>
                     Thêm ca
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Quote Product Modal -->
+    <div id="editQuoteProductModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Sửa sản phẩm báo giá</h3>
+                <button class="modal-close" onclick="closeEditQuoteProductModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Chọn sản phẩm</label>
+                        <div class="search-container">
+                            <input id="editQuoteProductSearch" class="form-input" type="text" placeholder="Tìm kiếm sản phẩm..." autocomplete="off" />
+                            <div id="editQuoteSearchResults" class="search-results"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Sản phẩm đã chọn</label>
+                        <div id="editQuoteSelectedProduct" class="selected-product-display" style="display:none;">
+                            <div class="selected-product-card" style="background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 16px; margin-top: 8px;">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; font-size: 16px; color: var(--text-primary, #1a202c); margin-bottom: 8px;" id="editQuoteProductName">-</div>
+                                        <div style="display: flex; gap: 16px; font-size: 14px; color: var(--text-secondary, #4a5568);">
+                                            <span><strong>Giá:</strong> <span id="editQuoteProductPrice">-</span></span>
+                                            <span><strong>Thời hạn:</strong> <span id="editQuoteProductDuration">-</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="editQuoteNoProductSelected" style="text-align: center; padding: 24px; color: var(--text-secondary, #64748b); font-style: italic; border: 1px dashed var(--border-color, #e2e8f0); border-radius: 8px; margin-top: 8px;">
+                            Chưa chọn sản phẩm
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Số lượng</label>
+                        <input id="editQuoteQuantity" class="form-input" type="number" min="1" value="1" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Thời hạn tùy chọn (tháng)</label>
+                        <input id="editQuoteDuration" class="form-input" type="number" min="0" placeholder="Tối thiểu theo gói" />
+                        <small style="color: var(--text-secondary, #64748b); font-size: 12px; margin-top: 4px; display: block;">Để trống sẽ sử dụng thời hạn mặc định. Nếu nhập thì phải ≥ thời hạn mặc định của sản phẩm.</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeEditQuoteProductModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="saveEditQuoteProduct()">
+                    <span class="btn-icon">💾</span>
+                    Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Quote Product Price Modal -->
+    <div id="editQuoteProductPriceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Sửa giá sản phẩm</h3>
+                <button class="modal-close" onclick="window.closeEditQuoteProductPriceModal && window.closeEditQuoteProductPriceModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Sản phẩm</label>
+                        <div id="editPriceProductName" style="padding: 12px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; font-weight: 600; color: var(--text-primary, #1a202c);">
+                            -
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Giá gốc</label>
+                        <div id="editPriceOriginalPrice" style="padding: 12px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; color: var(--text-secondary, #4a5568);">
+                            -
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Giá tự động (đã +10% phí dịch vụ)</label>
+                        <div id="editPriceAutoPrice" style="padding: 12px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; color: var(--text-secondary, #4a5568);">
+                            -
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">Chọn loại giá tùy chỉnh</label>
+                        <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid var(--border-color, #e2e8f0); border-radius: 8px; cursor: pointer; transition: all 0.2s;" id="priceOption1Label">
+                                <input type="radio" name="customPriceType" id="customPriceType1" value="withFee" style="width: 18px; height: 18px; cursor: pointer;" />
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; margin-bottom: 4px;">Dùng giá custom (đã +10% phí dịch vụ)</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary, #64748b);">Giá bạn nhập đã bao gồm 10% phí dịch vụ</div>
+                                </div>
+                            </label>
+                            
+                            <label style="display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid var(--border-color, #e2e8f0); border-radius: 8px; cursor: pointer; transition: all 0.2s;" id="priceOption2Label">
+                                <input type="radio" name="customPriceType" id="customPriceType2" value="withoutFee" style="width: 18px; height: 18px; cursor: pointer;" />
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; margin-bottom: 4px;">Dùng giá custom (chưa +10% phí dịch vụ)</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary, #64748b);">Giá bạn nhập chưa có phí dịch vụ, hệ thống sẽ tự động +10%</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label class="form-label">Nhập giá tùy chỉnh (VNĐ)</label>
+                        <input id="editPriceCustomPrice" class="form-input" type="number" min="0" step="1000" placeholder="Nhập giá..." />
+                        <small style="color: var(--text-secondary, #64748b); font-size: 12px; margin-top: 4px; display: block;">Giá này chỉ áp dụng cho báo giá này, không ảnh hưởng đến giá gốc của sản phẩm.</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="window.closeEditQuoteProductPriceModal && window.closeEditQuoteProductPriceModal()">Hủy</button>
+                <button class="btn btn-primary" onclick="window.saveQuoteProductPrice && window.saveQuoteProductPrice()">
+                    <span class="btn-icon">💾</span>
+                    Lưu giá
                 </button>
             </div>
         </div>

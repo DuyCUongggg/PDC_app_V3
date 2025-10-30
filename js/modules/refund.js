@@ -641,31 +641,44 @@ function displayRefundResult(result) {
         }
     }
     
+    const message = createCustomerMessage(result);
+    
     if (customerContent) {
-        const message = createCustomerMessage(result);
         customerContent.textContent = message;
-
-        // Cập nhật luôn textarea tại đây, không cần lặp lại phía dưới
-        const messageEditor = document.getElementById('refundCustomerMessageEditor');
-        if (messageEditor) {
-            messageEditor.value = message;
-        }
     }
     
-    // Also update the editable textarea directly
+    // Update editable textarea
     const messageEditor = document.getElementById('refundCustomerMessageEditor');
     if (messageEditor) {
-        const message = createCustomerMessage(result);
         messageEditor.value = message;
+        
+        // Tự động điều chỉnh chiều cao theo nội dung
+        const adjustTextareaHeight = () => {
+            messageEditor.style.height = 'auto';
+            messageEditor.style.height = Math.max(350, messageEditor.scrollHeight) + 'px';
+        };
+        
+        // Remove old listener nếu có (sử dụng named function để có thể remove)
+        const inputHandler = messageEditor._adjustHeightHandler;
+        if (inputHandler) {
+            messageEditor.removeEventListener('input', inputHandler);
+        }
+        
+        // Tạo handler mới và lưu reference
+        messageEditor._adjustHeightHandler = adjustTextareaHeight;
+        messageEditor.addEventListener('input', adjustTextareaHeight);
+        
+        // Điều chỉnh ngay lập tức
+        adjustTextareaHeight();
     }
     
-    // FORCE EQUAL COLUMNS WITH JAVASCRIPT
-   setTimeout(() => {
-    const container = document.querySelector('.refund-results-container');
-    if (container) {
-        container.classList.add('refund-grid-equal');
-    }
-}, 100);
+    // Force equal columns layout
+    setTimeout(() => {
+        const container = document.querySelector('.refund-results-container');
+        if (container) {
+            container.classList.add('refund-grid-equal');
+        }
+    }, 100);
 
     
     // ✅ Lưu kết quả hoàn tiền toàn cục để template realtime hoạt động
@@ -1228,15 +1241,12 @@ window.initComboRefundSystem = initComboRefundSystem;
 
 // Force equal columns on page load
 document.addEventListener('DOMContentLoaded', function() {
-    document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         const container = document.querySelector('.refund-results-container');
         if (container) {
             container.classList.add('refund-grid-equal');
         }
     }, 500);
-});
-
 });
 
 // --- Minimal order extractor (order id + purchase date) ---
@@ -1293,8 +1303,8 @@ function extractRefundOrderInfo() {
 }
 
 function parseRefundPatternA(text) {
-    // Format: [Đơn hàng #71946] (28/09/2025)
-    const headerMatch = text.match(/\[\s*Đơn hàng\s*#(\d+)\s*\]\s*\((\d{2}\/\d{2}\/\d{4})\)/i);
+    // Format: [Đơn hàng #71946] (28/09/2025) hoặc [Đơn hàng #DH60885] (22/04/2025)
+    const headerMatch = text.match(/\[\s*Đơn hàng\s*#([A-Z0-9]+)\s*\]\s*\((\d{2}\/\d{2}\/\d{4})\)/i);
     if (!headerMatch) return null;
     const rawId = headerMatch[1];
     const date = headerMatch[2]; // dd/mm/yyyy

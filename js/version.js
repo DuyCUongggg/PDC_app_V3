@@ -1,5 +1,5 @@
 // Version configuration - Single source of truth
-const APP_VERSION = '8.10.202501';
+const APP_VERSION = '30.10';
 
 // Auto-update version in HTML
 document.addEventListener('DOMContentLoaded', function() {
