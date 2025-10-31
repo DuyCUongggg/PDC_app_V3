@@ -4489,6 +4489,24 @@ section.tab-content.active {
     border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
+    white-space: nowrap;
+    display: inline-block;
+    min-width: fit-content;
+}
+
+.category-ai {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.category-combo {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.category-tool {
+    background: #f59e0b;
+    color: #ffffff;
 }
 
 .product-price {
@@ -5237,6 +5255,9 @@ section.tab-content.active {
     border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
+    white-space: nowrap;
+    display: inline-block;
+    min-width: fit-content;
 }
 
 .dark .category-ai {

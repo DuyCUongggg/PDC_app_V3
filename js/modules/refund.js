@@ -10,6 +10,9 @@ let selectedComboProductsForRefund = [];
 let selectedComboRefundProduct = null;
 let refundSearchSelectedIndex = -1;
 
+// Export selectedComboProductsForRefund ra window scope để app.js có thể truy cập
+window.selectedComboProductsForRefund = selectedComboProductsForRefund;
+
 // Initialize refund module
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize combo refund system
@@ -297,6 +300,7 @@ function hideComboRefundSection() {
         comboSection.style.display = 'none';
     }
     selectedComboProductsForRefund = [];
+    window.selectedComboProductsForRefund = [];
     selectedComboRefundProduct = null;
 }
 
@@ -315,7 +319,11 @@ function toggleComboRefundProduct(productId) {
         }
     }
     
+    // Export ra window để app.js có thể truy cập
+    window.selectedComboProductsForRefund = selectedComboProductsForRefund;
+    
     updateRefundDisplay();
+    updateRefundState(); // Cập nhật trạng thái nút tính toán
 }
 
 function updateRefundDisplay() {
@@ -493,16 +501,29 @@ function updateRefundState() {
 
     const isFullInfo = hasPrice && hasDuration && hasOrder && hasPurchaseDate;
 
-   if (isFullInfo && selectedRefundProduct && selectedRefundProduct.id) {
-    calculateBtn.disabled = false;
-    
-    // Trigger real-time calculation if available
-    if (typeof calculateRefundRealTime === 'function') {
-        calculateRefundRealTime();
+    // Nếu là combo, cần kiểm tra đã chọn ít nhất một sản phẩm
+    if (selectedRefundProduct && selectedRefundProduct.category === 'Combo') {
+        const hasSelectedComboProducts = selectedComboProductsForRefund && selectedComboProductsForRefund.length > 0;
+        if (isFullInfo && selectedRefundProduct.id && hasSelectedComboProducts) {
+            calculateBtn.disabled = false;
+            
+            // Trigger real-time calculation if available
+            if (typeof calculateRefundRealTime === 'function') {
+                calculateRefundRealTime();
+            }
+        } else {
+            calculateBtn.disabled = true;
+        }
+    } else if (isFullInfo && selectedRefundProduct && selectedRefundProduct.id) {
+        calculateBtn.disabled = false;
+        
+        // Trigger real-time calculation if available
+        if (typeof calculateRefundRealTime === 'function') {
+            calculateRefundRealTime();
+        }
+    } else {
+        calculateBtn.disabled = true;
     }
-} else {
-    calculateBtn.disabled = true;
-}
 }
 
 
@@ -537,8 +558,19 @@ function calculateRefundManual() {
         return;
     }
     
-    const result = calculateRefund(selectedRefundProduct, startDate, endDate);
-    displayRefundResult(result);
+    // Nếu là combo và có sản phẩm được chọn, tính toán cho các sản phẩm đã chọn
+    if (selectedRefundProduct.category === 'Combo' && selectedComboProductsForRefund.length > 0) {
+        const result = calculateComboRefund(selectedRefundProduct, selectedComboProductsForRefund, startDate, endDate);
+        displayRefundResult(result);
+    } else if (selectedRefundProduct.category === 'Combo' && selectedComboProductsForRefund.length === 0) {
+        // Nếu là combo nhưng chưa chọn sản phẩm nào, cảnh báo
+        showNotification('Vui lòng chọn ít nhất một sản phẩm trong combo để hoàn tiền!', 'error');
+        return;
+    } else {
+        // Sản phẩm thường, tính toán bình thường
+        const result = calculateRefund(selectedRefundProduct, startDate, endDate);
+        displayRefundResult(result);
+    }
 }
 
 function calculateRefund(product, startDate, endDate) {
@@ -611,6 +643,129 @@ function calculateRefund(product, startDate, endDate) {
         usedPercentage,
         planText,
         isExpired: false
+    };
+}
+
+// Tính hoàn tiền cho combo dựa trên các sản phẩm đã chọn
+function calculateComboRefund(comboProduct, selectedProductIds, startDate, endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+
+    if (e < s) {
+        return { error: 'Ngày kết thúc phải sau ngày bắt đầu!' };
+    }
+
+    if (!selectedProductIds || selectedProductIds.length === 0) {
+        return { error: 'Vui lòng chọn ít nhất một sản phẩm trong combo!' };
+    }
+
+    const products = window.products || window.appData?.products || [];
+    
+    // Lấy thông tin các sản phẩm đã chọn
+    const selectedProducts = selectedProductIds
+        .map(productId => products.find(p => p.id === productId))
+        .filter(Boolean);
+
+    if (selectedProducts.length === 0) {
+        return { error: 'Không tìm thấy sản phẩm đã chọn!' };
+    }
+
+    // Tính tổng giá gốc của tất cả sản phẩm trong combo
+    const allComboProducts = (comboProduct.comboProducts || [])
+        .map(productId => products.find(p => p.id === productId))
+        .filter(Boolean);
+    
+    const totalOriginalPrice = allComboProducts.reduce((sum, p) => sum + (p.price || 0), 0);
+    
+    // Tính tổng giá gốc của các sản phẩm đã chọn
+    const selectedOriginalPrice = selectedProducts.reduce((sum, p) => sum + (p.price || 0), 0);
+    
+    // Phân bổ giá combo cho các sản phẩm đã chọn theo tỷ lệ giá gốc
+    // Nếu tổng giá gốc = 0, chia đều
+    let allocatedPrice = 0;
+    if (totalOriginalPrice > 0) {
+        allocatedPrice = Math.round((comboProduct.price * selectedOriginalPrice) / totalOriginalPrice);
+    } else {
+        // Chia đều giá combo cho số sản phẩm đã chọn
+        allocatedPrice = Math.round(comboProduct.price / allComboProducts.length) * selectedProducts.length;
+    }
+
+    // Tính thời gian (dùng thời gian của combo)
+    let totalDays = Number(comboProduct.duration) || 0;
+    const unit = comboProduct.durationUnit === 'tháng' ? 'tháng' : (comboProduct.durationUnit === 'năm' ? 'năm' : 'ngày');
+    if (totalDays <= 0) totalDays = 1;
+
+    if (unit === 'tháng') {
+        totalDays = totalDays * 30;
+    } else if (unit === 'năm') {
+        totalDays = totalDays * 365;
+    }
+
+    const daysUsed = Math.max(0, Math.floor((e - s) / (1000 * 3600 * 24)));
+    const daysRemaining = Math.max(0, totalDays - daysUsed);
+
+    if (totalDays <= 0) {
+        return { error: 'Thời hạn gói không hợp lệ!' };
+    }
+
+    if (daysUsed < 0 || daysRemaining < 0) {
+        return { error: 'Tính toán ngày không hợp lệ!' };
+    }
+
+    if (daysUsed > totalDays) {
+        return { error: 'Thời gian sử dụng vượt quá thời hạn gói. Không thể hoàn.' };
+    }
+
+    if (daysRemaining <= 0) {
+        const perDay = Math.round(allocatedPrice / totalDays);
+        const usedPercentage = Math.round((daysUsed / totalDays) * 100);
+        const planText = `${comboProduct.duration} ${comboProduct.durationUnit}`;
+
+        return {
+            product: {
+                ...comboProduct,
+                name: `${comboProduct.name} (${selectedProducts.map(p => p.name).join(', ')})`,
+                price: allocatedPrice
+            },
+            totalDays,
+            daysUsed,
+            daysRemaining,
+            perDay,
+            usedPercentage,
+            planText,
+            refund: 0,
+            refundPercentage: 0,
+            isExpired: true,
+            isCombo: true,
+            selectedComboProducts: selectedProducts
+        };
+    }
+
+    const perDay = Math.round(allocatedPrice / totalDays);
+    const refund = Math.round((allocatedPrice * daysRemaining) / totalDays);
+    const refundPercentage = Math.min(100, Math.max(0, Math.round((daysRemaining / totalDays) * 100)));
+    const usedPercentage = Math.min(100, Math.max(0, Math.round((daysUsed / totalDays) * 100)));
+    const planText = `${comboProduct.duration} ${comboProduct.durationUnit}`;
+
+    return {
+        product: {
+            ...comboProduct,
+            name: `${comboProduct.name} (${selectedProducts.map(p => p.name).join(', ')})`,
+            price: allocatedPrice
+        },
+        totalDays,
+        daysUsed,
+        daysRemaining,
+        perDay,
+        refund,
+        refundPercentage,
+        usedPercentage,
+        planText,
+        isExpired: false,
+        isCombo: true,
+        selectedComboProducts: selectedProducts,
+        comboOriginalPrice: comboProduct.price,
+        allocatedPrice: allocatedPrice
     };
 }
 
@@ -950,6 +1105,7 @@ function createCustomerMessage(result) {
 function restartRefundForm() {
     selectedRefundProduct = null;
     selectedComboProductsForRefund = [];
+    window.selectedComboProductsForRefund = [];
     selectedComboRefundProduct = null;
     
     // Clear form
@@ -1207,6 +1363,7 @@ function updateRefundTab() {
         // Clear any selected products
         selectedRefundProduct = null;
         selectedComboProductsForRefund = [];
+        window.selectedComboProductsForRefund = [];
         selectedComboRefundProduct = null;
         
     } else {
@@ -1437,6 +1594,7 @@ function clearRefundProduct() {
     
     // Clear selected combo products
     selectedComboProductsForRefund = [];
+    window.selectedComboProductsForRefund = [];
     selectedComboRefundProduct = null;
     
     hideComboRefundSection();
@@ -1484,4 +1642,5 @@ function getSavedTemplate() {
 
 // Export functions for use in other modules
 window.calculateRefund = calculateRefund;
+window.calculateComboRefund = calculateComboRefund;
 window.displayRefundResult = displayRefundResult;

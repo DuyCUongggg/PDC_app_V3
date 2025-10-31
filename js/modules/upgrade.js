@@ -803,11 +803,21 @@ class UpgradeManager {
         const scenarios = details.scenarios.scenarios;
         const messages = [];
 
+        // Lấy mã đơn hàng đã trích xuất (nếu có)
+        const orderId = window.__extractedUpgradeOrderId || '';
+
         scenarios.forEach((scenario, index) => {
             const isNoTopup = scenario.type === 'proportional';
             const title = isNoTopup ? 'Không bù thêm tiền' : 'Bù thêm tiền';
             
-            let content = `Kính gửi Quý khách,\n\nCentrix xin thông tin về việc đổi gói dịch vụ như sau:\n\n📦 GÓI HIỆN TẠI:\n• Tên gói: ${this.selectedCurrentProduct.name} (${this.selectedCurrentProduct.duration} ${this.selectedCurrentProduct.durationUnit})\n• Đã dùng: ${formatDMY(details.startDate)} → ${formatDMY(details.endDate)} (${details.daysUsed} ngày)\n• Còn lại: ${details.remainingDays} ngày (≈ ${formatPrice(details.refundAmount)}đ)\n\n🆕 GÓI MỚI:\n• Tên gói: ${this.selectedNewProduct.name} (${this.selectedNewProduct.duration} ${this.selectedNewProduct.durationUnit})\n• Giá gói: ${formatPrice(this.selectedNewProduct.price)}đ`;
+            let content = `Kính gửi Quý khách,\n\nCentrix xin thông tin về việc đổi gói dịch vụ như sau:`;
+            
+            // Thêm mã đơn hàng nếu có
+            if (orderId) {
+                content += `\n• Mã đơn hàng: ${orderId}`;
+            }
+            
+            content += `\n\n📦 GÓI HIỆN TẠI:\n• Tên gói: ${this.selectedCurrentProduct.name} (${this.selectedCurrentProduct.duration} ${this.selectedCurrentProduct.durationUnit})\n• Đã dùng: ${formatDMY(details.startDate)} → ${formatDMY(details.endDate)} (${details.daysUsed} ngày)\n• Còn lại: ${details.remainingDays} ngày (≈ ${formatPrice(details.refundAmount)}đ)\n\n🆕 GÓI MỚI:\n• Tên gói: ${this.selectedNewProduct.name} (${this.selectedNewProduct.duration} ${this.selectedNewProduct.durationUnit})\n• Giá gói: ${formatPrice(this.selectedNewProduct.price)}đ`;
 
             if (isNoTopup) {
                 content += `\n\n• Không cần thanh toán thêm\n• Thời gian sử dụng gói mới: ${formatDMY(scenario.startDate)} → ${formatDMY(scenario.endDate)} (${scenario.totalDays} ngày)`;
@@ -951,5 +961,125 @@ window.calculateUpgrade = () => upgradeManager?.calculateUpgrade();
 window.copyUpgradeResult = () => upgradeManager?.copyResult();
 window.refreshUpgradeData = () => upgradeManager?.refreshData();
 window.updateUpgradeTab = () => upgradeManager?.updateEmptyState();
+
+// ===== ORDER EXTRACTION FOR UPGRADE =====
+// Copy from refund module
+function extractUpgradeOrderInfo() {
+    try {
+        const input = document.getElementById('upgradeOrderInput');
+        if (!input) {
+            return;
+        }
+
+        const text = (input.value || '').trim();
+        if (!text) {
+            showNotification('Vui lòng dán nội dung đơn hàng!', 'error');
+            return;
+        }
+
+        // Try pattern A: [Đơn hàng #71946] (28/09/2025)
+        const a = parseUpgradePatternA(text);
+        if (a) {
+            updateUpgradeOrderExtractUI(a.orderId, a.purchaseDate);
+            // Auto-apply purchase date to upgrade start date
+            const startDateInput = document.getElementById('upgradeStartDate');
+            if (startDateInput) {
+                startDateInput.value = a.purchaseDate;
+                startDateInput.dispatchEvent(new Event('change'));
+            }
+            showNotification(`Đã trích xuất theo Mẫu 1. Ngày mua: ${formatDMY(new Date(a.purchaseDate))}`, 'success');
+            return;
+        }
+
+        // Try pattern B: email, price, ORDERID RESELLER, statuses, date time
+        const b = parseUpgradePatternB(text);
+        if (b) {
+            updateUpgradeOrderExtractUI(b.orderId, b.purchaseDate);
+            // Auto-apply purchase date to upgrade start date
+            const startDateInput = document.getElementById('upgradeStartDate');
+            if (startDateInput) {
+                startDateInput.value = b.purchaseDate;
+                startDateInput.dispatchEvent(new Event('change'));
+            }
+            showNotification(`Đã trích xuất theo Mẫu 2. Ngày mua: ${formatDMY(new Date(b.purchaseDate))}`, 'success');
+            return;
+        }
+
+        showNotification('Không nhận diện được mẫu dữ liệu!', 'error');
+    } catch (e) {
+        // Handle error silently
+    }
+}
+
+function parseUpgradePatternA(text) {
+    // Format: [Đơn hàng #71946] (28/09/2025) hoặc [Đơn hàng #DH60885] (22/04/2025)
+    const headerMatch = text.match(/\[\s*Đơn hàng\s*#([A-Z0-9]+)\s*\]\s*\((\d{2}\/\d{2}\/\d{4})\)/i);
+    if (!headerMatch) return null;
+    const rawId = headerMatch[1];
+    const date = headerMatch[2]; // dd/mm/yyyy
+    const orderId = rawId.startsWith('DH') ? rawId : `DH${rawId}`;
+    // Normalize to ISO yyyy-mm-dd for inputs
+    const [dd, mm, yyyy] = date.split('/');
+    const iso = `${yyyy}-${mm}-${dd}`;
+    return { orderId, purchaseDate: iso };
+}
+
+function parseUpgradePatternB(text) {
+    const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+
+    if (lines.length < 4) return null;
+
+    // PRIORITY 1: Find line containing RESELLER
+    let orderLine = lines.find(l => /RESELLER/i.test(l));
+
+    // PRIORITY 2: If no RESELLER, find alphanumeric code BUT exclude email
+    if (!orderLine) {
+        orderLine = lines.find(l => {
+            // Exclude lines with @ (email)
+            if (l.includes('@')) return false;
+            // Exclude lines with ₫ (price)
+            if (l.includes('₫')) return false;
+            // Exclude status words
+            if (/^(PAID|SUCCESS|PENDING|FAILED)$/i.test(l)) return false;
+            // Must contain alphanumeric code
+            return /[A-Z0-9]{6,}/i.test(l);
+        });
+    }
+
+    // Find date with dd/mm/yyyy
+    const dateLine = lines.find(l => /\d{2}\/\d{2}\/\d{4}/.test(l));
+
+    if (!orderLine || !dateLine) {
+        return null;
+    }
+
+    const orderId = orderLine.trim();
+    const dateMatch = dateLine.match(/(\d{2}\/\d{2}\/\d{4})/);
+    if (!dateMatch) return null;
+
+    const [dd, mm, yyyy] = dateMatch[1].split('/');
+    const iso = `${yyyy}-${mm}-${dd}`;
+
+    return { orderId, purchaseDate: iso };
+}
+
+function updateUpgradeOrderExtractUI(orderId, isoDate) {
+    // Store extracted data for later use
+    window.__extractedUpgradeOrderId = orderId;
+    window.__extractedUpgradePurchaseDate = isoDate;
+}
+
+function clearUpgradeOrderInfo() {
+    const input = document.getElementById('upgradeOrderInput');
+    if (input) input.value = '';
+    
+    // Clear stored data
+    window.__extractedUpgradeOrderId = null;
+    window.__extractedUpgradePurchaseDate = null;
+}
+
+// Export functions to global scope
+window.extractUpgradeOrderInfo = extractUpgradeOrderInfo;
+window.clearUpgradeOrderInfo = clearUpgradeOrderInfo;
 
 

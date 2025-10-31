@@ -1612,8 +1612,69 @@
                 if (e.target.value === 'Combo') {
                     editComboSection.style.display = 'block';
                     populateEditAISelection();
+                    // Clear search input when showing combo section
+                    const editAiSearchInput = document.getElementById('editAiSearchInput');
+                    if (editAiSearchInput) {
+                        editAiSearchInput.value = '';
+                    }
                 } else {
                     hideEditComboSection();
+                    // Clear search input when hiding combo section
+                    const editAiSearchInput = document.getElementById('editAiSearchInput');
+                    if (editAiSearchInput) {
+                        editAiSearchInput.value = '';
+                    }
+                }
+            });
+        }
+        
+        // Add search functionality for edit combo
+        const editAiSearchInput = document.getElementById('editAiSearchInput');
+        if (editAiSearchInput) {
+            // Remove old listeners if any
+            const newEditAiSearchInput = editAiSearchInput.cloneNode(true);
+            editAiSearchInput.parentNode.replaceChild(newEditAiSearchInput, editAiSearchInput);
+            
+            // Debounce search để tránh quá nhiều lần gọi
+            let editSearchTimeout;
+            newEditAiSearchInput.addEventListener('input', function() {
+                clearTimeout(editSearchTimeout);
+                const query = this.value.trim();
+                editSearchTimeout = setTimeout(() => {
+                    populateEditAISelection(query);
+                    // Re-check products that are in this combo after filtering
+                    if (product.comboProducts && product.comboProducts.length > 0) {
+                        setTimeout(() => {
+                            const aiCheckboxes = document.querySelectorAll('#editAiSelectionGrid input[type="checkbox"]');
+                            aiCheckboxes.forEach(cb => {
+                                const productInCombo = appData.products.find(p => p.id === cb.value);
+                                if (productInCombo && product.comboProducts.includes(productInCombo.id)) {
+                                    cb.checked = true;
+                                }
+                            });
+                        }, 50);
+                    }
+                }, 300);
+            });
+            
+            // Cũng trigger khi người dùng nhấn Enter
+            newEditAiSearchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    clearTimeout(editSearchTimeout);
+                    populateEditAISelection(this.value.trim());
+                    // Re-check products that are in this combo after filtering
+                    if (product.comboProducts && product.comboProducts.length > 0) {
+                        setTimeout(() => {
+                            const aiCheckboxes = document.querySelectorAll('#editAiSelectionGrid input[type="checkbox"]');
+                            aiCheckboxes.forEach(cb => {
+                                const productInCombo = appData.products.find(p => p.id === cb.value);
+                                if (productInCombo && product.comboProducts.includes(productInCombo.id)) {
+                                    cb.checked = true;
+                                }
+                            });
+                        }, 50);
+                    }
                 }
             });
         }
@@ -1627,7 +1688,7 @@
         editSelectedComboProducts = [];
     }
     
-    function populateEditAISelection() {
+    function populateEditAISelection(searchQuery = '') {
         const editAiSelectionGrid = document.getElementById('editAiSelectionGrid');
         if (!editAiSelectionGrid) return;
 
@@ -1641,14 +1702,39 @@
             );
 
             if (aiProducts.length > 0) {
+                // Loại bỏ các tên trùng lặp - chỉ giữ lại sản phẩm đầu tiên với mỗi tên
+                const uniqueProducts = [];
+                const seenNames = new Set();
+                
                 aiProducts.forEach(product => {
-                    const checkbox = document.createElement('label');
-                    checkbox.className = 'ai-checkbox';
-                    checkbox.innerHTML = `
-                        <input type="checkbox" value="${product.id}"> ${product.name}
-                    `;
-                    editAiSelectionGrid.appendChild(checkbox);
+                    const normalizedName = (product.name || '').trim().toLowerCase();
+                    if (normalizedName && !seenNames.has(normalizedName)) {
+                        seenNames.add(normalizedName);
+                        uniqueProducts.push(product);
+                    }
                 });
+                
+                // Lọc theo search query nếu có
+                let filteredProducts = uniqueProducts;
+                if (searchQuery && searchQuery.trim()) {
+                    const query = searchQuery.trim().toLowerCase();
+                    filteredProducts = uniqueProducts.filter(product => 
+                        (product.name || '').toLowerCase().includes(query)
+                    );
+                }
+                
+                if (filteredProducts.length > 0) {
+                    filteredProducts.forEach(product => {
+                        const checkbox = document.createElement('label');
+                        checkbox.className = 'ai-checkbox';
+                        checkbox.innerHTML = `
+                            <input type="checkbox" value="${product.id}"> ${product.name}
+                        `;
+                        editAiSelectionGrid.appendChild(checkbox);
+                    });
+                } else {
+                    editAiSelectionGrid.innerHTML = '<p style="color: #666; font-style: italic;">Không tìm thấy sản phẩm AI nào phù hợp.</p>';
+                }
             } else {
                 editAiSelectionGrid.innerHTML = '<p style="color: #666; font-style: italic;">Chưa có sản phẩm AI nào. Hãy thêm sản phẩm AI trước.</p>';
             }
@@ -1705,13 +1791,30 @@
             }
             
             if (startDate && endDate) {
-                // Use the existing calculateRefund function from refund.js
-                if (typeof calculateRefund === 'function') {
-                    const result = calculateRefund(selectedRefundProduct, startDate, endDate);
-                    if (result && !result.error) {
-                        // Update the display in real-time
-                        if (typeof displayRefundResult === 'function') {
-                            displayRefundResult(result);
+                // Xử lý combo: nếu là combo và có sản phẩm được chọn, tính toán cho các sản phẩm đã chọn
+                if (selectedRefundProduct.category === 'Combo') {
+                    // Lấy selectedComboProductsForRefund từ refund.js module
+                    // Vì nó là biến local trong refund.js, ta cần truy cập qua window hoặc tham chiếu trực tiếp
+                    // Giả sử nó được set vào window.selectedComboProductsForRefund hoặc có cách truy cập khác
+                    const selectedComboIds = window.selectedComboProductsForRefund || [];
+                    
+                    if (selectedComboIds.length > 0 && typeof calculateComboRefund === 'function') {
+                        const result = calculateComboRefund(selectedRefundProduct, selectedComboIds, startDate, endDate);
+                        if (result && !result.error) {
+                            if (typeof displayRefundResult === 'function') {
+                                displayRefundResult(result);
+                            }
+                        }
+                    }
+                } else {
+                    // Sản phẩm thường, tính toán bình thường
+                    if (typeof calculateRefund === 'function') {
+                        const result = calculateRefund(selectedRefundProduct, startDate, endDate);
+                        if (result && !result.error) {
+                            // Update the display in real-time
+                            if (typeof displayRefundResult === 'function') {
+                                displayRefundResult(result);
+                            }
                         }
                     }
                 }

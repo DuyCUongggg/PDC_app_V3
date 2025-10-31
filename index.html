@@ -293,6 +293,16 @@
                             <!-- Combo AI Selection -->
                             <div id="comboAISection" style="display: none; margin-bottom: 20px;">
                                 <label class="form-label">Chọn AI cho Combo</label>
+                                <div style="margin-bottom: 10px;">
+                                    <input 
+                                        type="text" 
+                                        id="aiSearchInput" 
+                                        placeholder="Tìm kiếm AI..." 
+                                        class="form-input" 
+                                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                        autocomplete="off"
+                                    />
+                                </div>
                                 <div class="ai-selection-grid" id="aiSelectionGrid">
                                     <!-- AI products will be populated here from existing products -->
                                 </div>
@@ -612,6 +622,27 @@
 
                                 <!-- Removed selected products comparison per request -->
                                 <div id="upgradeSelectedProducts" class="selected-products" style="display:none;"></div>
+
+                                <!-- Upgrade Order Extraction -->
+                                <div class="refund-card" style="margin: 20px 0;">
+                                    <div class="refund-card-header">
+                                        <div class="refund-icon">🧾</div>
+                                        <h2>Trích xuất mã đơn & ngày mua</h2>
+                                    </div>
+                                    
+                                    <div class="refund-search-box">
+                                        <textarea id="upgradeOrderInput" class="refund-search-input" placeholder="Dán nội dung đơn hàng vào đây..." style="min-height:60px;"></textarea>
+                                        <div style="margin-top: 6px; font-size: 11px; color: #666;">
+                                            <strong>Ví dụ:</strong><br>
+                                            1. [Đơn hàng #71854] (25/09/2025)<br>
+                                            2. photoshoptutorial13@gmail.com 395,000₫ 71968 CENTRIX_ASIA PAID SUCCESS 29/09/2025 10:37
+                                        </div>
+                                        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                                            <button type="button" class="btn btn-primary" onclick="extractUpgradeOrderInfo()">🔍 Trích xuất</button>
+                                            <button type="button" class="btn btn-outline" onclick="clearUpgradeOrderInfo()">🗑️ Xóa</button>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 <button id="upgradeBtn" class="btn-calculate" disabled>
                                     <span class="btn-icon">🧮</span>
@@ -1288,6 +1319,16 @@
                     <div id="editComboSection" class="combo-section" style="display:none;">
                         <div class="form-group">
                             <label class="form-label">Chọn AI cho Combo</label>
+                            <div style="margin-bottom: 10px;">
+                                <input 
+                                    type="text" 
+                                    id="editAiSearchInput" 
+                                    placeholder="Tìm kiếm AI..." 
+                                    class="form-input" 
+                                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                    autocomplete="off"
+                                />
+                            </div>
                             <div class="ai-selection-grid" id="editAiSelectionGrid">
                                 <!-- AI products will be populated here from existing products -->
                             </div>
