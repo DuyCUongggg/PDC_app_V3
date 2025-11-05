@@ -34,49 +34,72 @@ class FamilyEmailChecker {
         }
     }
 
-    // Phát hiện có chủ family hay không
+    // Phát hiện có chủ family hay không (ngôn ngữ-agnostic)
+    // Quy ước: nếu phát hiện có từ 2 email trở lên trong danh sách -> coi như có chủ (bỏ email đầu tiên)
+    // Điều này đúng với mẫu Family: Organizer (email 1) + các Member (email 2+)
     detectFamilyOrganizer(lines) {
-        return lines.some(line => 
-            line.includes('Family organizer') || 
-            line.includes('家庭组织者') ||
-            line.includes('(you)') ||
-            line.includes('(你)')
-        );
+        const emailCount = lines.reduce((count, line) => count + (this.isEmail(line.trim()) ? 1 : 0), 0);
+        if (emailCount >= 2) return true;
+
+        // Fallback bổ sung: nếu bắt gặp các marker đa ngôn ngữ thì cũng coi là có chủ
+        const tokens = [
+            // EN
+            'family organizer', 'family group', 'member', '(you)',
+            // ZH (Simplified/Traditional)
+            '家庭组织者', '家庭組織者', '家庭组', '家庭群組', '成员', '成員', '(你)',
+            // JA
+            'ファミリー オーガナイザー', 'ファミリーオーガナイザー', 'ファミリー グループ', 'ファミリーグループ', 'メンバー', '（あなた）', '(あなた)',
+            // KO
+            '가족 관리자', '가족 그룹', '구성원', '（당신）', '(당신)'
+        ];
+        const lowerLines = lines.map(l => l.toLowerCase());
+        return lowerLines.some(l => tokens.some(t => l.includes(t.toLowerCase())));
     }
 
     // Parse family có chủ (bỏ email đầu tiên)
     parseFamilyWithOrganizer(lines) {
         const emails = [];
+        const seenEmails = new Set();
         let skipFirstEmail = true;
         let currentName = null;
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             
-            // Bỏ qua các dòng đặc biệt
-            if (line.includes('Family group') || 
-                line.includes('Family organizer') || 
-                line.includes('(you)') ||
-                line.includes('家庭组') ||
-                line.includes('家庭组织者') ||
-                line.includes('(你)') ||
-                line.includes('Member') ||
-                line.includes('成员')) {
+            // Bỏ qua các dòng đặc biệt (đa ngôn ngữ, không phụ thuộc dịch)
+            const skipTokens = [
+                // EN
+                'family group', 'family organizer', 'member', '(you)',
+                // ZH (Simplified/Traditional)
+                '家庭组', '家庭群組', '家庭组织者', '家庭組織者', '成员', '成員', '(你)',
+                // JA
+                'ファミリー グループ', 'ファミリーグループ', 'ファミリー オーガナイザー', 'ファミリーオーガナイザー', 'メンバー', '（あなた）', '(あなた)',
+                // KO
+                '가족 그룹', '가족 관리자', '구성원', '（당신）', '(당신)'
+            ];
+            const lower = line.toLowerCase();
+            if (skipTokens.some(t => lower.includes(t.toLowerCase()))) {
                 continue;
             }
             
             if (this.isEmail(line)) {
-                // Bỏ qua email đầu tiên (của chủ family)
+                const normalized = line.toLowerCase();
+                // Bỏ qua email đầu tiên (của chủ family) và đánh dấu đã thấy
                 if (skipFirstEmail) {
                     skipFirstEmail = false;
+                    seenEmails.add(normalized);
+                    currentName = null;
                     continue;
                 }
-                
-                emails.push({
-                    email: line.toLowerCase(),
-                    name: currentName || 'Member',
-                    source: 'family'
-                });
+                // Chỉ thêm nếu chưa thấy trước đó (loại case tên = email)
+                if (!seenEmails.has(normalized)) {
+                    emails.push({
+                        email: normalized,
+                        name: currentName || 'Member',
+                        source: 'family'
+                    });
+                    seenEmails.add(normalized);
+                }
                 currentName = null;
             } else {
                 // Đây là tên
@@ -90,28 +113,38 @@ class FamilyEmailChecker {
     // Parse family không có chủ
     parseFamilyWithoutOrganizer(lines) {
         const emails = [];
+        const seenEmails = new Set();
         let currentName = null;
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             
             if (this.isEmail(line)) {
-                emails.push({
-                    email: line.toLowerCase(),
-                    name: currentName || 'Member',
-                    source: 'family'
-                });
+                const normalized = line.toLowerCase();
+                if (!seenEmails.has(normalized)) {
+                    emails.push({
+                        email: normalized,
+                        name: currentName || 'Member',
+                        source: 'family'
+                    });
+                    seenEmails.add(normalized);
+                }
                 currentName = null;
             } else {
                 // Đây là tên
-                currentName = line;
+                // Nếu "tên" thực chất là email, không set vào currentName để tránh trùng lặp
+                if (!this.isEmail(line)) {
+                    currentName = line;
+                }
             }
         }
         
         return emails;
     }
 
-    // Xử lý danh sách email từ thông tin lưu trữ - QUY TẮC MỚI: 100% là email
+    // Xử lý danh sách từ cột "Thông tin note" (hỗ trợ 2 định dạng)
+    // 1) Chỉ email trên mỗi dòng (format cũ)
+    // 2) Email <tab> Ngày mua <tab> Ngày hết hạn <tab> Số tháng (VD: "12 tháng")
     parseStoredEmails(text) {
         if (!text || !text.trim()) {
             return [];
@@ -120,19 +153,61 @@ class FamilyEmailChecker {
         const lines = text.split('\n').map(line => line.trim()).filter(line => line);
         const emails = [];
         
-        // QUY TẮC: Cột "Thông tin lưu trữ" 100% là email, không bỏ qua dòng nào
         lines.forEach((line, index) => {
-            if (line) {
-                // Coi tất cả dòng là email, kể cả không hoàn chỉnh
-                emails.push({ 
-                    name: `Email ${index + 1}`, // Tên đơn giản 
-                    email: line.toLowerCase(), // Luôn coi là email
-                    source: 'stored'
-                });
+            if (!line) return;
+            const partsTab = line.split('\t');
+            let emailPart = line;
+            if (partsTab.length >= 1) {
+                emailPart = partsTab[0];
             }
+            const normalized = (emailPart || '').trim().toLowerCase();
+            if (!normalized) return;
+            emails.push({ 
+                name: `Email ${index + 1}`,
+                email: normalized,
+                source: 'stored'
+            });
         });
         
         return emails;
+    }
+
+    // Parse chi tiết cột "Thông tin note" để kiểm tra hạn và số tháng
+    parseStoredNotesMeta(text) {
+        const warnings = {
+            expiredEmails: [] // email có ngày hết hạn < hôm nay
+        };
+        if (!text || !text.trim()) {
+            return { emails: [], warnings };
+        }
+        const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+        const emails = [];
+        const today = getTodayAtStartOfDay();
+        
+        lines.forEach((raw, index) => {
+            const line = raw.trim();
+            if (!line) return;
+            const byTab = line.split('\t');
+            if (byTab.length >= 2) {
+                const emailStr = (byTab[0] || '').trim().toLowerCase();
+                const startStr = (byTab[1] || '').trim();
+                const endStr = (byTab[2] || '').trim();
+                if (emailStr) {
+                    emails.push({ name: `Email ${index + 1}`, email: emailStr, source: 'stored' });
+                }
+                const start = parseDateDDMMYYYY(startStr);
+                const end = parseDateDDMMYYYY(endStr);
+                if (end && end.getTime() < today.getTime() && emailStr) {
+                    warnings.expiredEmails.push(emailStr);
+                }
+                return;
+            }
+            // Fallback: format cũ chỉ có email
+            const normalized = line.toLowerCase();
+            emails.push({ name: `Email ${index + 1}`, email: normalized, source: 'stored' });
+        });
+        
+        return { emails, warnings };
     }
 
     // Kiểm tra xem chuỗi có phải là email không
@@ -296,10 +371,18 @@ class FamilyEmailChecker {
             throw new Error(`Lỗi Family: ${error.message}`);
         }
         
+        let storedWarnings = { expiredEmails: [], durationMismatch: [] };
         try {
-            storedEmails = this.parseStoredEmails(storedText);
+            const parsed = this.parseStoredNotesMeta(storedText);
+            storedEmails = parsed.emails;
+            storedWarnings = parsed.warnings || storedWarnings;
         } catch (error) {
-            throw new Error(`Lỗi Stored: ${error.message}`);
+            // Fallback an toàn: vẫn thử parser cũ để không chặn luồng so sánh
+            try {
+                storedEmails = this.parseStoredEmails(storedText);
+            } catch (_) {
+                throw new Error(`Lỗi Stored: ${error.message}`);
+            }
         }
         
         // Tìm các email khớp hoàn toàn
@@ -347,6 +430,7 @@ class FamilyEmailChecker {
             similarPairs,
             familyOnly,
             storedOnly,
+            storedWarnings,
             totalFamily: familyEmails.length,
             totalStored: storedEmails.length
         };
@@ -552,6 +636,21 @@ document.addEventListener('DOMContentLoaded', function() {
             firstBtn.classList.add('active');
         }
     }
+
+    // Click-to-copy cho các email trong bảng kết quả (event delegation)
+    document.addEventListener('click', function(e) {
+        const target = e.target;
+        if (!target) return;
+        const emailEl = target.closest && target.closest('.email-address');
+        if (!emailEl) return;
+        const rawText = (emailEl.textContent || '').trim();
+        if (!rawText || rawText === '-') return;
+        copyTextToClipboard(rawText);
+        flashCopyEffect(emailEl);
+    });
+
+    // Chèn CSS mini effect một lần
+    injectCopyEffectStyles();
 });
 
 // Cập nhật số cặp list mail
@@ -734,6 +833,23 @@ function showResultSections(status, result) {
     }
 }
 
+// Hiển thị báo cáo lỗi từ cột "Thông tin note"
+function renderStoredWarnings(warnings, container) {
+    if (!warnings || (!warnings.expiredEmails?.length)) return;
+    const section = document.createElement('div');
+    section.className = 'result-section';
+    const expiredHtml = (warnings.expiredEmails || []).map(e => `<span class="email-different">${e}</span>`).join('<br>');
+    section.innerHTML = `
+        <div class="single-note-container error">
+            <div class="note-badge error">❌ Báo cáo lỗi thông tin note</div>
+            <div class="note-details">
+                ${warnings.expiredEmails?.length ? `<div class="difference-count">${warnings.expiredEmails.length} email đã hết hạn</div><div class="email-differences-inline">${expiredHtml}</div>` : ''}
+            </div>
+        </div>
+    `;
+    container.appendChild(section);
+}
+
 // Hiển thị các email khác biệt (sửa để hiển thị cả Family và Stored)
 function displayDifferences(familyOnly, storedOnly) {
     const familyDiv = document.getElementById('familyOnlyEmails');
@@ -913,6 +1029,68 @@ function updateComparisonTable(result) {
         `;
         tbody.appendChild(row);
     });
+}
+
+// Copy tiện ích
+function copyTextToClipboard(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+        } else {
+            fallbackCopy(text);
+        }
+    } catch (_) {
+        fallbackCopy(text);
+    }
+}
+
+function fallbackCopy(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(textarea);
+}
+
+// Mini visual feedback khi copy
+function flashCopyEffect(el) {
+    try {
+        el.classList.add('copied-flash');
+        // Bố cục inline để đảm bảo thấy hiệu ứng nếu thiếu CSS global
+        el.style.transition = el.style.transition || 'background-color 220ms ease, box-shadow 220ms ease';
+        const originalBg = el.style.backgroundColor;
+        const originalShadow = el.style.boxShadow;
+        el.style.backgroundColor = 'rgba(72, 187, 120, 0.18)'; // xanh lá nhạt
+        el.style.boxShadow = '0 0 0 2px rgba(72, 187, 120, 0.35) inset';
+        setTimeout(() => {
+            el.style.backgroundColor = originalBg || '';
+            el.style.boxShadow = originalShadow || '';
+            el.classList.remove('copied-flash');
+        }, 500);
+    } catch (_) {}
+}
+
+function injectCopyEffectStyles() {
+    if (document.getElementById('copy-effect-style')) return;
+    const style = document.createElement('style');
+    style.id = 'copy-effect-style';
+    style.textContent = `
+        .email-address { cursor: pointer; }
+        .email-address.copied-flash { position: relative; }
+        .email-address.copied-flash::after {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; right: 0; bottom: 0;
+            border-radius: 4px;
+            background: rgba(72, 187, 120, 0.12);
+            pointer-events: none;
+        }
+    `;
+    document.head.appendChild(style);
 }
 
 // Xóa tất cả form
@@ -1173,6 +1351,11 @@ function displayResultsForPair(result, status, containerId) {
         container.appendChild(section);
     }
     
+    // Báo cáo lỗi thông tin note (chỉ hết hạn)
+    if (showNotes && result.storedWarnings && (result.storedWarnings.expiredEmails?.length)) {
+        renderStoredWarnings(result.storedWarnings, container);
+    }
+
     // Luôn chỉ hiển thị bảng email (ghi chú đã ở trên)
     const tableWrapper = document.createElement('div');
     tableWrapper.className = 'comparison-table-container';
@@ -1190,6 +1373,29 @@ function displayResultsForPair(result, status, containerId) {
     container.appendChild(tableWrapper);
 
     updateComparisonTableForPair(result, `comparisonTableBody${containerId}`);
+}
+
+// --------- Helpers cho ngày tháng ---------
+function parseDateDDMMYYYY(str) {
+    if (!str) return null;
+    // Hỗ trợ cả "dd/MM/yyyy" và "d/M/yyyy"
+    const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const y = parseInt(m[3], 10);
+    const date = new Date(y, mo, d);
+    if (date.getFullYear() !== y || date.getMonth() !== mo || date.getDate() !== d) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+// (Đã bỏ kiểm tra sai số tháng)
+
+function getTodayAtStartOfDay() {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return t;
 }
 
 // Tạo ghi chú chi tiết chỉ cho trường hợp 2 và 3
