@@ -35,16 +35,14 @@ class FamilyEmailChecker {
     }
 
     // Phát hiện có chủ family hay không (ngôn ngữ-agnostic)
-    // Quy ước: nếu phát hiện có từ 2 email trở lên trong danh sách -> coi như có chủ (bỏ email đầu tiên)
-    // Điều này đúng với mẫu Family: Organizer (email 1) + các Member (email 2+)
+    // Chỉ coi là định dạng "Family group/Organizer/Member" nếu có token đặc trưng
+    // Tránh suy luận theo số lượng email vì dễ nhầm với định dạng danh sách tên/email thuần
     detectFamilyOrganizer(lines) {
-        const emailCount = lines.reduce((count, line) => count + (this.isEmail(line.trim()) ? 1 : 0), 0);
-        if (emailCount >= 2) return true;
-
-        // Fallback bổ sung: nếu bắt gặp các marker đa ngôn ngữ thì cũng coi là có chủ
         const tokens = [
             // EN
             'family organizer', 'family group', 'member', '(you)',
+            // VI
+            'người tổ chức gia đình', 'nhóm gia đình', 'thành viên', '(bạn)',
             // ZH (Simplified/Traditional)
             '家庭组织者', '家庭組織者', '家庭组', '家庭群組', '成员', '成員', '(你)',
             // JA
