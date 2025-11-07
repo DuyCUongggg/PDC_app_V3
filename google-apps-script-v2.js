@@ -121,13 +121,16 @@ function handleUpsert(products) {
       throw new Error('Sheet not found: ' + SHEET_NAME);
     }
     
-    // Clear existing data (keep headers)
-    const lastRow = sheet.getLastRow();
-    if (lastRow > 1) {
-      sheet.getRange(2, 1, lastRow - 1, 9).clearContent();
+    // ✅ FIX: Validate products array BEFORE clearing data
+    if (!Array.isArray(products) || products.length === 0) {
+      console.warn('Empty or invalid products array - skipping upsert to prevent data loss');
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        message: 'Cannot upsert: products array is empty or invalid. Data not cleared to prevent loss.'
+      })).setMimeType(ContentService.MimeType.JSON);
     }
     
-    // Prepare data for batch insert
+    // Prepare data for batch insert FIRST (before clearing)
     const rowsToInsert = products.map(product => [
       product.id || '',                    // Column A: id
       product.name || '',                  // Column B: name
@@ -139,6 +142,12 @@ function handleUpsert(products) {
       (product.H || product.category || 'AI') === 'AI Services' ? 'AI' : (product.H || product.category || 'AI'), // Column H: category ✅
       product.I || product.comboProducts || ''         // Column I: comboProducts ✅
     ]);
+    
+    // ✅ FIX: Only clear existing data AFTER validating and preparing new data
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 9).clearContent();
+    }
     
     // Batch insert all rows
     if (rowsToInsert.length > 0) {
@@ -205,12 +214,18 @@ function handleNotesList() {
 function handleNotesUpsert(notes) {
   try {
     const sheet = getNotesSheet_();
-    // Clear existing data (keep header)
-    const lastRow = sheet.getLastRow();
-    if (lastRow > 1) {
-      sheet.getRange(2, 1, lastRow - 1, 8).clearContent();
+    
+    // ✅ FIX: Validate notes array BEFORE clearing data
+    if (!Array.isArray(notes) || notes.length === 0) {
+      console.warn('Empty or invalid notes array - skipping upsert to prevent data loss');
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        message: 'Cannot upsert: notes array is empty or invalid. Data not cleared to prevent loss.'
+      })).setMimeType(ContentService.MimeType.JSON);
     }
-    const rows = (notes || []).map(n => [
+    
+    // Prepare data FIRST (before clearing)
+    const rows = notes.map(n => [
       n.id || '',
       n.orderCode || '',
       n.chatLink || '',
@@ -220,6 +235,13 @@ function handleNotesUpsert(notes) {
       n.updatedAt || new Date().toISOString(),
       n.tags || ''
     ]);
+    
+    // ✅ FIX: Only clear existing data AFTER validating and preparing new data
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 8).clearContent();
+    }
+    
     if (rows.length > 0) {
       sheet.getRange(2, 1, rows.length, 8).setValues(rows);
     }

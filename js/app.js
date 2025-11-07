@@ -342,30 +342,58 @@
                     return product;
                 });
                 
-                appData.products = products;
-                window.products = products; // Set window.products for refund module
-                sanitizeProducts();
-                appData.metadata.lastUpdated = new Date().toISOString();
+                // ✅ FIX: Không gán mảng rỗng nếu đang có dữ liệu (tránh mất dữ liệu do race condition)
+                const hasExistingData = appData.products && appData.products.length > 0;
+                const hasNewData = products && products.length > 0;
                 
-                const combos = products.filter(p => p.category === 'Combo');
-                
-                renderProductList();
-                updateHeaderStats();
-                updateTabs();
-                if (typeof refreshRefundState === 'function') refreshRefundState();
-                showNotification(`Đã tải ${products.length} sản phẩm từ Google Sheets!`);
+                if (hasNewData) {
+                    // Có dữ liệu mới từ sheet -> cập nhật
+                    appData.products = products;
+                    window.products = products; // Set window.products for refund module
+                    sanitizeProducts();
+                    appData.metadata.lastUpdated = new Date().toISOString();
+                    
+                    const combos = products.filter(p => p.category === 'Combo');
+                    
+                    renderProductList();
+                    updateHeaderStats();
+                    updateTabs();
+                    if (typeof refreshRefundState === 'function') refreshRefundState();
+                    showNotification(`Đã tải ${products.length} sản phẩm từ Google Sheets!`);
+                } else if (hasExistingData) {
+                    // Sheet trả về rỗng nhưng đang có dữ liệu -> giữ lại dữ liệu cũ, không ghi đè
+                    console.warn('Google Sheets returned empty array but local data exists. Keeping existing data to prevent data loss.');
+                    showNotification('Sheet trống, giữ lại dữ liệu hiện tại', 'warning');
+                } else {
+                    // Không có dữ liệu cũ và sheet cũng rỗng -> OK, gán mảng rỗng
+                    appData.products = products;
+                    window.products = products;
+                    renderProductList();
+                    updateHeaderStats();
+                    updateTabs();
+                    showNotification('Sheet trống, chưa có sản phẩm nào');
+                }
             } else {
                 throw new Error(result.message || result.error || 'Không thể tải dữ liệu');
             }
             
         } catch (error) {
             showNotification('Lỗi: ' + error.message, 'error');
+            // ✅ FIX: Nếu có lỗi khi load, giữ lại dữ liệu hiện tại thay vì xóa
+            console.error('Error loading from Google Sheets, keeping existing data:', error);
         }
     }
 
     // Save data to Google Sheets via Apps Script API
     async function saveToGoogleSheets() {
         try {
+            // ✅ FIX: Kiểm tra mảng rỗng TRƯỚC KHI save để tránh xóa dữ liệu trong sheet
+            if (!appData.products || !Array.isArray(appData.products) || appData.products.length === 0) {
+                console.warn('Cannot save: products array is empty. Skipping save to prevent data loss in Google Sheets.');
+                showNotification('Không thể lưu: danh sách sản phẩm trống. Dữ liệu không bị xóa.', 'warning');
+                return;
+            }
+            
             showNotification('Đang lưu dữ liệu vào Google Sheets...', 'info');
             
             // Convert app data to Google Sheets format
@@ -387,6 +415,13 @@
                 
                 return sheetProduct;
             });
+            
+            // ✅ FIX: Double-check sau khi map (tránh trường hợp map trả về mảng rỗng do lỗi)
+            if (!products || products.length === 0) {
+                console.warn('Cannot save: mapped products array is empty. Skipping save to prevent data loss.');
+                showNotification('Không thể lưu: dữ liệu không hợp lệ. Dữ liệu không bị xóa.', 'warning');
+                return;
+            }
             
             // Also save combo data to local JSON as backup
             saveComboDataToLocal();
@@ -417,6 +452,7 @@
             
         } catch (error) {
             showNotification('Lỗi: ' + error.message, 'error');
+            console.error('Error saving to Google Sheets:', error);
         }
     }
 
